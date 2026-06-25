@@ -5,8 +5,8 @@ Global Menu for GNOME brings a clean, streamlined desktop layout to your system 
 ## Installation
 
 ### Method 1: Install via GNOME Extensions Website
-The easiest way to install the extension is directly from the official store:
-Get it on GNOME Extensions: https://extensions.gnome.org
+The easiest way to install the extension is directly from the official web store:
+Get it on GNOME Extensions: https://extensions.gnome.org/extension/10288/global-menu-for-gnome/
 
 ### Method 2: Install from Source
 To install the extension manually from source, open your terminal and run the following commands:
