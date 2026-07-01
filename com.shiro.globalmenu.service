@@ -1,3 +1,0 @@
-[D-BUS Service]
-Name=com.shiro.globalmenu
-Exec=/usr/bin/python3 /home/shiro/.local/share/gnome-shell/extensions/globalmenu@ShiroOSL.github.io/backend/global_menu_backend.py
