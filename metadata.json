@@ -1,0 +1,15 @@
+{
+  "uuid": "globalmenu@ShiroOSL.github.io",
+  "name": "Global Menu for GNOME",
+  "description": "A customized global application menu inspired by the macOS desktop experience, supporting standard window actions, history navigation, and quick editing shortcuts.",
+  "version": 2,
+  "shell-version": [
+    "45",
+    "46",
+    "47",
+    "48",
+    "49",
+    "50"
+  ],
+  "url": "https://github.com/ShiroOSL/global-menu-for-gnome"
+}
