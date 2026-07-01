@@ -1,35 +1,43 @@
 # Global Menu for GNOME
 
-Global Menu for GNOME brings a clean, streamlined desktop layout to your system by seamlessly integrating active application menus directly into the GNOME top panel. This lightweight extension maximizes your vertical screen real estate, provides smooth native window navigation, and relies on an efficient backend architecture to deliver a highly polished, lag-free user experience. Built with modern Linux display architectures in mind, it has been fully tested and verified to run stably on GNOME 50 under Wayland environments.
+Global Menu for GNOME brings a clean, streamlined desktop layout to your system by adding a dedicated application menu directly into the GNOME top panel. Inspired by the sleek aesthetic of macOS, this lightweight extension places essential window actions, navigation controls, and quick-access menu options into a single unified top-bar component. Built with modern Linux display architectures in mind, it runs 100% natively as a pure-JavaScript extension and is verified for GNOME 50 under Wayland environments.
 
-## Installation
+## 🚀 Installation
 
 ### Method 1: Install via GNOME Extensions Website
-The easiest way to install the extension is directly from the official web store:
-Get it on GNOME Extensions: https://extensions.gnome.org/extension/10288/global-menu-for-gnome/
+Once approved by the review team, the easiest way to install the extension will be directly from the official web store:
+👉 [Get it on GNOME Extensions](https://extensions.gnome.org/extension/10288/global-menu-for-gnome/)
+
+*(Note: If the link returns a 404, it is still undergoing the GNOME review process. Please use Method 2 below in the meantime!)*
 
 ### Method 2: Install from Source
 To install the extension manually from source, open your terminal and run the following commands:
 
-# Clone the repository to your local machine
-git clone https://github.com/ShiroOSL/global-menu-for-gnome.git
 
-# Navigate into the project directory
-cd global-menu-for-gnome
+ Clone the repository to your local machine
+`git clone https://github.com/ShiroOSL/global-menu-for-gnome.git`
 
-# Make the installation script executable and run it
-chmod +x install.sh
-./install.sh
+ Navigate into the project directory
+`cd global-menu-for-gnome`
 
-After running the script, log out and log back in (or restart GNOME Shell) and enable Global Menu for GNOME using the Extensions app or Extension Manager.
+ Run the installation script
+`bash install.sh`
 
-## Uninstallation
 
-If you ever need to remove the extension, you can easily do so using the included uninstall script:
+🔄 Apply Changes:
 
+On Wayland: Log out of your desktop session and log back in.
+
+On X11: Press Alt + F2, type r, and hit Enter to reload GNOME Shell.
+
+Once your session is reloaded, enable `Global Menu for GNOME` using the Extensions app or Extension Manager.
+
+# ❌ Uninstallation
+If you ever need to remove the extension and clean up its configuration, use the included uninstall script:
+
+```
 # Navigate into the cloned project directory
 cd global-menu-for-gnome
 
-# Make the uninstallation script executable and run it
-chmod +x uninstall.sh
-./uninstall.sh
+# Run the uninstallation script
+bash uninstall.sh
