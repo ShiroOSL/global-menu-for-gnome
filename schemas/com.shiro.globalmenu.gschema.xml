@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
   <schema id="org.gnome.shell.extensions.globalmenu" path="/org/gnome/shell/extensions/globalmenu/">
-    <key type="b" name="show-indicator">
+    <key name="show-indicator" type="b">
       <default>true</default>
-      <summary>Show Global Menu Indicator</summary>
-      <description>Whether to show the Global Menu indicator in the top panel.</description>
+      <summary>Show Indicator</summary>
+      <description>Toggle the global menu indicator visibility.</description>
     </key>
   </schema>
 </schemalist>
