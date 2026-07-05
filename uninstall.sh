@@ -4,7 +4,7 @@ EXTENSION_UUID="globalmenu@ShiroOSL.github.io"
 EXTENSION_DIR="$HOME/.local/share/gnome-shell/extensions/$EXTENSION_UUID"
 
 echo "--------------------------------------------------"
-echo "🧹 Starting uninstallation of Global Menu V2"
+echo "🧹 Starting uninstallation of Global Menu"
 echo "--------------------------------------------------"
 
 echo "🚫 Disabling the extension..."
