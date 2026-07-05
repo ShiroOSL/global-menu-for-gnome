@@ -3,14 +3,16 @@ import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
+import Shell from 'gi://Shell';
 import * as PanelMenu from "resource:///org/gnome/shell/ui/panelMenu.js";
 import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 
 const TopLevelMenuButton = GObject.registerClass(
   class TopLevelMenuButton extends PanelMenu.Button {
-    _init(label, children) {
+    _init(label, children, appInstance = null) {
       super._init(0.0, label);
+      this._appInstance = appInstance;
       
       let title = new St.Label({
           text: label,
@@ -26,7 +28,6 @@ const TopLevelMenuButton = GObject.registerClass(
         let display = global.display;
         let window = display.get_focus_window();
 
-        // 1. Direct System/Window Actions
         if (action === "close") {
             if (window) window.delete(global.get_current_time());
             return true;
@@ -41,7 +42,35 @@ const TopLevelMenuButton = GObject.registerClass(
             return true;
         }
 
-        // 2. Original Python Process Sub-Launches
+        if (action.startsWith("activate-window:")) {
+            let winId = action.split(":")[1];
+            if (this._appInstance) {
+                let appWindows = this._appInstance.get_windows();
+                let targetWin = appWindows.find(w => w.get_id().toString() === winId);
+                if (targetWin) {
+                    targetWin.activate(global.get_current_time());
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        if (action === "new-app-window") {
+            if (this._appInstance) {
+                this._appInstance.open_new_window(-1);
+                return true;
+            }
+            return false;
+        }
+
+        if (action.startsWith("app-details:")) {
+            let appId = action.split(":")[1];
+            if (appId) {
+                GLib.spawn_command_line_async(`gnome-software --details=${appId}`);
+                return true;
+            }
+        }
+
         try {
             if (action === "open-finder" || action === "new-finder-win") {
                 GLib.spawn_command_line_async(`xdg-open ${GLib.get_home_dir()}`);
@@ -55,47 +84,49 @@ const TopLevelMenuButton = GObject.registerClass(
             } else if (action === "empty-bin") {
                 GLib.spawn_command_line_async("gio trash --empty");
                 return true;
+            } else if (action === "open-system-help") {
+                GLib.spawn_command_line_async("yelp");
+                return true;
             }
         } catch (e) {
             console.error(`[globalmenu] Process execution error: ${e}`);
         }
 
-        // 3. Virtual Keyboard Shortcuts Block
         try {
             let seat = Clutter.get_default_backend().get_default_seat();
             let virtualDevice = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
             
             if (virtualDevice) {
-                let modifierScanCode = 29; // KEY_LEFTCTRL
+                let modifierScanCode = 29; 
                 let actionScanCode = 0;
                 let useModifier = true;
                 
-                if (action === "copy") actionScanCode = 46;       // KEY_C
-                else if (action === "paste") actionScanCode = 47;  // KEY_V
-                else if (action === "cut") actionScanCode = 45;    // KEY_X
-                else if (action === "undo") actionScanCode = 44;   // KEY_Z
-                else if (action === "redo") actionScanCode = 21;   // KEY_Y
-                else if (action === "select-all") actionScanCode = 30; // KEY_A
-                else if (action === "new-tab") actionScanCode = 28;    // KEY_T
+                if (action === "copy") actionScanCode = 46;       
+                else if (action === "paste") actionScanCode = 47;  
+                else if (action === "cut") actionScanCode = 45;    
+                else if (action === "undo") actionScanCode = 44;   
+                else if (action === "redo") actionScanCode = 21;   
+                else if (action === "select-all") actionScanCode = 30; 
+                else if (action === "new-tab") actionScanCode = 28;    
                 else if (action === "go-back") {
-                    modifierScanCode = 56; // KEY_LEFTALT
-                    actionScanCode = 105;  // KEY_LEFT
+                    modifierScanCode = 56; 
+                    actionScanCode = 105;  
                 }
                 else if (action === "go-forward") {
-                    modifierScanCode = 56; // KEY_LEFTALT
-                    actionScanCode = 106;  // KEY_RIGHT
+                    modifierScanCode = 56; 
+                    actionScanCode = 106;  
                 }
                 else if (action === "delete-item") {
                     useModifier = false;
-                    actionScanCode = 111;  // KEY_DELETE
+                    actionScanCode = 111;  
                 }
                 else if (action === "virtual-open") {
                     useModifier = false;
-                    actionScanCode = 28;   // KEY_ENTER
+                    actionScanCode = 28;   
                 }
                 else if (action === "properties") {
-                    modifierScanCode = 56; // KEY_LEFTALT
-                    actionScanCode = 28;   // KEY_ENTER
+                    modifierScanCode = 56; 
+                    actionScanCode = 28;   
                 }
 
                 if (actionScanCode !== 0) {
@@ -123,6 +154,11 @@ const TopLevelMenuButton = GObject.registerClass(
       for (const item of menuItems) {
         if (item.type === "separator") {
           parentMenu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        } else if (item.type === "section-header") {
+          let headerItem = new PopupMenu.PopupMenuItem(item.label, { activate: false });
+          headerItem.setSensitive(false);
+          headerItem.label.add_style_class_name('popup-subtitle-menu-item');
+          parentMenu.addMenuItem(headerItem);
         } else if (item.type === "submenu") {
           const subMenu = new PopupMenu.PopupSubMenuMenuItem(item.label);
           this._buildSubMenu(item.children, subMenu.menu);
@@ -145,22 +181,91 @@ export class MenuManager {
     constructor(uuid) {
         this.uuid = uuid;
         this._buttons = [];
-        this._loadStaticMenus();
+        this._blacklist = ['gjs', 'org.gnome.gjs', 'gnome-shell', 'mutter', 'nautilus', 'org.gnome.nautilus'];
     }
 
-    _loadStaticMenus() {
+    updateMenuForWindow(window) {
+        this.clear();
+
+        let appName = "Finder";
+        let isAppFocused = false;
+        let desktopId = "";
+        let detectedApp = null;
+
+        if (window) {
+            let windowType = window.get_window_type();
+            
+            // Meta.WindowType.NORMAL is 0. Ignore notifications and background popups.
+            if (windowType === 0) {
+                let tracker = Shell.WindowTracker.get_default();
+                detectedApp = tracker.get_window_app(window);
+                
+                let checkId = detectedApp ? (detectedApp.get_id() || "") : "";
+                let checkName = detectedApp ? (detectedApp.get_name() || "") : "";
+                let wmClass = window.get_wm_class() || "";
+                let title = window.get_title() || "";
+
+                // Group all identifiers into a single lowercase check to trap any gjs environment leaks
+                let combinedIdentifiers = `${checkId} ${checkName} ${wmClass} ${title}`.toLowerCase();
+
+                let isBlacklisted = this._blacklist.some(item => 
+                    combinedIdentifiers.includes(item.toLowerCase())
+                );
+
+                if (!isBlacklisted && (detectedApp || wmClass)) {
+                    if (detectedApp) {
+                        appName = detectedApp.get_name();
+                        desktopId = detectedApp.get_id();
+                        isAppFocused = true;
+                    } else if (wmClass) {
+                        appName = wmClass.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                        desktopId = wmClass.toLowerCase() + ".desktop";
+                        isAppFocused = true;
+                    }
+                } else {
+                    detectedApp = null;
+                }
+            }
+        }
+
+        let firstMenuChildren = [];
+        if (isAppFocused) {
+            if (detectedApp) {
+                let openWindows = detectedApp.get_windows();
+                if (openWindows.length > 0) {
+                    firstMenuChildren.push({ type: "section-header", label: "Open Windows" });
+                    openWindows.forEach(win => {
+                        firstMenuChildren.push({
+                            label: win.get_title() || appName,
+                            action: `activate-window:${win.get_id()}`
+                        });
+                    });
+                    firstMenuChildren.push({ type: "separator" });
+                }
+            }
+            firstMenuChildren.push(
+                { label: "New Window", action: "new-app-window" },
+                { type: "separator" },
+                { label: "App Details", action: `app-details:${desktopId}` },
+                { type: "separator" },
+                { label: `Quit ${appName}`, action: "close" }
+            );
+        } else {
+            firstMenuChildren = [
+                { label: "About Finder", action: "about-finder" },
+                { type: "separator" },
+                { label: "Open Finder", action: "open-finder" },
+                { label: "Settings", action: "open-settings" },
+                { type: "separator" },
+                { label: "Empty Bin...", action: "empty-bin" }
+            ];
+        }
+
         const menuData = [
             {
                 type: "submenu",
-                label: "Finder",
-                children: [
-                    { label: "About Finder", action: "about-finder" },
-                    { type: "separator" },
-                    { label: "Open Finder", action: "open-finder" },
-                    { label: "Settings", action: "open-settings" },
-                    { type: "separator" },
-                    { label: "Empty Bin...", action: "empty-bin" }
-                ]
+                label: appName,
+                children: firstMenuChildren
             },
             {
                 type: "submenu",
@@ -216,12 +321,19 @@ export class MenuManager {
                     { type: "separator" },
                     { label: "Close", action: "close" }
                 ]
+            },
+            {
+                type: "submenu",
+                label: "Help",
+                children: [
+                    { label: "Help", action: "open-system-help" }
+                ]
             }
         ];
 
         menuData.forEach((item, index) => {
             if (item.type === "submenu") {
-                let btn = new TopLevelMenuButton(item.label, item.children);
+                let btn = new TopLevelMenuButton(item.label, item.children, detectedApp);
                 Main.panel.addToStatusArea(`${this.uuid}-${index}`, btn, index + 1, 'left');
                 this._buttons.push(btn);
             }
