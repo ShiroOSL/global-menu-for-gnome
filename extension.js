@@ -6,20 +6,36 @@ export default class GlobalMenuExtension extends Extension {
         super(metadata);
         this._menuManager = null;
         this._settings = null;
+        this._focusNotifyId = 0;
     }
 
     enable() {
         console.log(`[globalmenu@ShiroOSL.github.io] Enabling extension.`);
         
-        // Pass the GNOME-mandated base schema ID string
         this._settings = this.getSettings('org.gnome.shell.extensions.globalmenu');
         
-        // Pass the extension instance context down to the manager
-        this._menuManager = new MenuManager(this);
+        // Correctly pass the string UUID from metadata
+        const uuid = this.metadata.uuid || 'globalmenu@ShiroOSL.github.io';
+        this._menuManager = new MenuManager(uuid);
+
+        // Track active window adjustments dynamically
+        let initialWindow = global.display.get_focus_window();
+        this._menuManager.updateMenuForWindow(initialWindow);
+
+        this._focusNotifyId = global.display.connect('notify::focus-window', () => {
+            let activeWindow = global.display.get_focus_window();
+            this._menuManager.updateMenuForWindow(activeWindow);
+        });
     }
 
     disable() {
         console.log(`[globalmenu@ShiroOSL.github.io] Disabling extension.`);
+        
+        if (this._focusNotifyId > 0) {
+            global.display.disconnect(this._focusNotifyId);
+            this._focusNotifyId = 0;
+        }
+
         if (this._menuManager) {
             this._menuManager.destroy();
             this._menuManager = null;
