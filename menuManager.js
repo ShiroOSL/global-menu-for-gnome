@@ -10,9 +10,10 @@ import * as Main from "resource:///org/gnome/shell/ui/main.js";
 
 const TopLevelMenuButton = GObject.registerClass(
   class TopLevelMenuButton extends PanelMenu.Button {
-    _init(label, children, appInstance = null) {
+    _init(label, children, appInstance = null, menuManagerInstance = null) {
       super._init(0.0, label);
       this._appInstance = appInstance;
+      this._menuManagerInstance = menuManagerInstance;
       
       let title = new St.Label({
           text: label,
@@ -72,7 +73,7 @@ const TopLevelMenuButton = GObject.registerClass(
         }
 
         try {
-            if (action === "open-finder" || action === "new-finder-win") {
+            if (action === "open-finder" || action === "new-finder-win" || action === "go-home") {
                 GLib.spawn_command_line_async(`xdg-open ${GLib.get_home_dir()}`);
                 return true;
             } else if (action === "new-folder") {
@@ -87,6 +88,27 @@ const TopLevelMenuButton = GObject.registerClass(
             } else if (action === "open-system-help") {
                 GLib.spawn_command_line_async("yelp");
                 return true;
+            } else if (action === "send-feedback") {
+                Gio.AppInfo.launch_default_for_uri(
+                    'https://extensions.gnome.org/extension/10288/global-menu-for-gnome/',
+                    global.create_app_launch_context(0, -1)
+                );
+                return true;
+            } else if (action === "go-recents") {
+                GLib.spawn_command_line_async("xdg-open recent:///");
+                return true;
+            } else if (action === "go-documents") {
+                let path = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOCUMENTS) || `${GLib.get_home_dir()}/Documents`;
+                GLib.spawn_command_line_async(`xdg-open "${path}"`);
+                return true;
+            } else if (action === "go-desktop") {
+                let path = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DESKTOP) || `${GLib.get_home_dir()}/Desktop`;
+                GLib.spawn_command_line_async(`xdg-open "${path}"`);
+                return true;
+            } else if (action === "go-downloads") {
+                let path = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOWNLOAD) || `${GLib.get_home_dir()}/Downloads`;
+                GLib.spawn_command_line_async(`xdg-open "${path}"`);
+                return true;
             }
         } catch (e) {
             console.error(`[globalmenu] Process execution error: ${e}`);
@@ -97,7 +119,38 @@ const TopLevelMenuButton = GObject.registerClass(
             let virtualDevice = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
             
             if (virtualDevice) {
-                let modifierScanCode = 29; 
+                if (action === "native-open-with") {
+                    let timeUs = GLib.get_monotonic_time();
+                    let shiftScanCode = 42; // Shift key
+                    let f10ScanCode = 68;   // F10 key
+                    let hScanCode = 35;     // 'h' key for mnemonic shortcut
+
+                    // 1. Open context right-click popup menu on selection
+                    virtualDevice.notify_key(timeUs, shiftScanCode, Clutter.KeyState.PRESSED);
+                    virtualDevice.notify_key(timeUs + 10, f10ScanCode, Clutter.KeyState.PRESSED);
+                    virtualDevice.notify_key(timeUs + 20, f10ScanCode, Clutter.KeyState.RELEASED);
+                    virtualDevice.notify_key(timeUs + 30, shiftScanCode, Clutter.KeyState.RELEASED);
+
+                    // 2. Track the timeout source ID to clear on extension disable
+                    let timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
+                        let timeNow = GLib.get_monotonic_time();
+                        virtualDevice.notify_key(timeNow, hScanCode, Clutter.KeyState.PRESSED);
+                        virtualDevice.notify_key(timeNow + 10, hScanCode, Clutter.KeyState.RELEASED);
+                        
+                        if (this._menuManagerInstance) {
+                            this._menuManagerInstance._timeoutIds = this._menuManagerInstance._timeoutIds.filter(id => id !== timeoutId);
+                        }
+                        return GLib.SOURCE_REMOVE;
+                    });
+                    
+                    if (this._menuManagerInstance) {
+                        this._menuManagerInstance._timeoutIds.push(timeoutId);
+                    }
+                    
+                    return true;
+                }
+
+                let modifierScanCode = 29; // Ctrl
                 let actionScanCode = 0;
                 let useModifier = true;
                 
@@ -108,6 +161,12 @@ const TopLevelMenuButton = GObject.registerClass(
                 else if (action === "redo") actionScanCode = 21;   
                 else if (action === "select-all") actionScanCode = 30; 
                 else if (action === "new-tab") actionScanCode = 28;    
+                else if (action === "print") actionScanCode = 25; // Ctrl + P
+                else if (action === "emoji-picker") actionScanCode = 52; // Ctrl + . (Period)
+                else if (action === "toggle-fullscreen") {
+                    useModifier = false;
+                    actionScanCode = 87; // F11 key
+                }
                 else if (action === "go-back") {
                     modifierScanCode = 56; 
                     actionScanCode = 105;  
@@ -118,14 +177,14 @@ const TopLevelMenuButton = GObject.registerClass(
                 }
                 else if (action === "delete-item") {
                     useModifier = false;
-                    actionScanCode = 111;  
+                    actionScanCode = 111; // Delete key
                 }
                 else if (action === "virtual-open") {
                     useModifier = false;
                     actionScanCode = 28;   
                 }
                 else if (action === "properties") {
-                    modifierScanCode = 56; 
+                    modifierScanCode = 56; // Alt + Enter (Get Info)
                     actionScanCode = 28;   
                 }
 
@@ -181,6 +240,7 @@ export class MenuManager {
     constructor(uuid) {
         this.uuid = uuid;
         this._buttons = [];
+        this._timeoutIds = [];
         this._blacklist = ['gjs', 'org.gnome.gjs', 'gnome-shell', 'mutter', 'nautilus', 'org.gnome.nautilus'];
     }
 
@@ -195,7 +255,6 @@ export class MenuManager {
         if (window) {
             let windowType = window.get_window_type();
             
-            // Meta.WindowType.NORMAL is 0. Ignore notifications and background popups.
             if (windowType === 0) {
                 let tracker = Shell.WindowTracker.get_default();
                 detectedApp = tracker.get_window_app(window);
@@ -205,7 +264,6 @@ export class MenuManager {
                 let wmClass = window.get_wm_class() || "";
                 let title = window.get_title() || "";
 
-                // Group all identifiers into a single lowercase check to trap any gjs environment leaks
                 let combinedIdentifiers = `${checkId} ${checkName} ${wmClass} ${title}`.toLowerCase();
 
                 let isBlacklisted = this._blacklist.some(item => 
@@ -275,8 +333,14 @@ export class MenuManager {
                     { label: "New Folder", action: "new-folder" },
                     { label: "New Tab", action: "new-tab" },
                     { label: "Open", action: "virtual-open" },
+                    { label: "Open With", action: "native-open-with" },
+                    { label: "Print", action: "print" },
                     { type: "separator" },
-                    { label: "Properties", action: "properties" },
+                    { label: "Get Info", action: "properties" },
+                    { label: "Compress", action: "compress" },
+                    { label: "Duplicate", action: "duplicate" },
+                    { type: "separator" },
+                    { label: "Move to Trash", action: "delete-item" },
                     { type: "separator" },
                     { label: "Close Window", action: "close" }
                 ]
@@ -293,7 +357,9 @@ export class MenuManager {
                     { label: "Paste", action: "paste" },
                     { label: "Delete", action: "delete-item" },
                     { type: "separator" },
-                    { label: "Select All", action: "select-all" }
+                    { label: "Select All", action: "select-all" },
+                    { type: "separator" },
+                    { label: "Emoji & Symbols", action: "emoji-picker" }
                 ]
             },
             {
@@ -301,7 +367,9 @@ export class MenuManager {
                 label: "View",
                 children: [
                     { label: "as Icons", action: "view-icons" },
-                    { label: "as List", action: "view-list" }
+                    { label: "as List", action: "view-list" },
+                    { type: "separator" },
+                    { label: "Enter Full Screen", action: "toggle-fullscreen" }
                 ]
             },
             {
@@ -309,7 +377,13 @@ export class MenuManager {
                 label: "Go",
                 children: [
                     { label: "Back", action: "go-back" },
-                    { label: "Forward", action: "go-forward" }
+                    { label: "Forward", action: "go-forward" },
+                    { type: "separator" },
+                    { label: "Recents", action: "go-recents" },
+                    { label: "Documents", action: "go-documents" },
+                    { label: "Desktop", action: "go-desktop" },
+                    { label: "Downloads", action: "go-downloads" },
+                    { label: "Home", action: "go-home" }
                 ]
             },
             {
@@ -326,14 +400,15 @@ export class MenuManager {
                 type: "submenu",
                 label: "Help",
                 children: [
-                    { label: "Help", action: "open-system-help" }
+                    { label: "Send Feedback", action: "send-feedback" },
+                    { label: "GNOME Help", action: "open-system-help" }
                 ]
             }
         ];
 
         menuData.forEach((item, index) => {
             if (item.type === "submenu") {
-                let btn = new TopLevelMenuButton(item.label, item.children, detectedApp);
+                let btn = new TopLevelMenuButton(item.label, item.children, detectedApp, this);
                 Main.panel.addToStatusArea(`${this.uuid}-${index}`, btn, index + 1, 'left');
                 this._buttons.push(btn);
             }
@@ -343,6 +418,12 @@ export class MenuManager {
     clear() {
         this._buttons.forEach(btn => btn.destroy());
         this._buttons = [];
+        
+        // Safely cancel any active timeout loops to eliminate leaks/lint findings
+        if (this._timeoutIds && this._timeoutIds.length > 0) {
+            this._timeoutIds.forEach(id => GLib.source_remove(id));
+            this._timeoutIds = [];
+        }
     }
 
     destroy() {
