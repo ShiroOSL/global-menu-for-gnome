@@ -5,7 +5,7 @@ EXTENSION_DIR="$HOME/.local/share/gnome-shell/extensions/$EXTENSION_UUID"
 SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "--------------------------------------------------"
-echo "🚀 Starting installation of Global Menu for GNOME (V3)"
+echo "🚀 Starting installation of Global Menu for GNOME (V4)"
 echo "--------------------------------------------------"
 
 echo "🧹 Clearing old structures..."
@@ -16,6 +16,8 @@ echo "📄 Copying extension files..."
 cp -rv "$SOURCE_DIR/metadata.json" "$EXTENSION_DIR/"
 cp -rv "$SOURCE_DIR/extension.js" "$EXTENSION_DIR/"
 cp -rv "$SOURCE_DIR/menuManager.js" "$EXTENSION_DIR/"
+cp -rv "$SOURCE_DIR/logs.sh" "$EXTENSION_DIR/"
+cp -rv "$SOURCE_DIR/uninstall.sh" "$EXTENSION_DIR/"
 cp -rv "$SOURCE_DIR/schemas" "$EXTENSION_DIR/"
 
 echo "⚙️ Compiling GSettings schemas..."
