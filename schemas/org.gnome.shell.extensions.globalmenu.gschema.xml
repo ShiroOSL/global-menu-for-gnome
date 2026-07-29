@@ -3,8 +3,75 @@
   <schema id="org.gnome.shell.extensions.globalmenu" path="/org/gnome/shell/extensions/globalmenu/">
     <key name="show-indicator" type="b">
       <default>true</default>
-      <summary>Show Indicator</summary>
-      <description>Toggle the global menu indicator visibility.</description>
+      <summary>Show Global Menu</summary>
+      <description>Master toggle for the whole global menu bar.</description>
+    </key>
+
+    <key name="menu-app-enabled" type="b"><default>true</default><summary>Show App menu</summary></key>
+    <key name="menu-file-enabled" type="b"><default>true</default><summary>Show File menu</summary></key>
+    <key name="menu-edit-enabled" type="b"><default>true</default><summary>Show Edit menu</summary></key>
+    <key name="menu-view-enabled" type="b"><default>true</default><summary>Show View menu</summary></key>
+    <key name="menu-go-enabled" type="b"><default>true</default><summary>Show Go menu</summary></key>
+    <key name="menu-window-enabled" type="b"><default>true</default><summary>Show Window menu</summary></key>
+    <key name="menu-help-enabled" type="b"><default>true</default><summary>Show Help menu</summary></key>
+
+    <key name="custom-menus" type="s">
+      <default>"[]"</default>
+      <summary>JSON list of custom menu sections</summary>
+      <description>Each entry: {label, enabled, items: [{label, kind: "command"|"shortcut", value}]}. Supports any number of independent custom top-level menus.</description>
+    </key>
+
+    <key name="show-logo-menu" type="b"><default>true</default><summary>Show the System Menu button</summary></key>
+    <key name="logo-icon-name" type="s"><default>"start-here-symbolic"</default><summary>System icon name for the System Menu button</summary></key>
+    <key name="logo-custom-icon-path" type="s">
+      <default>""</default>
+      <summary>Path to a custom icon file for the System Menu button</summary>
+      <description>Highest priority: when non-empty, overrides everything else.</description>
+    </key>
+    <key name="logo-distro-icon" type="s">
+      <default>""</default>
+      <summary>Bundled distro icon stem (e.g. "fedora", "arch"), empty for none</summary>
+    </key>
+    <key name="logo-distro-icon-symbolic" type="b">
+      <default>true</default>
+      <summary>Use the symbolic (single-color) variant of the bundled distro icon</summary>
+    </key>
+    <key name="logo-icon-size" type="i">
+      <default>16</default>
+      <range min="12" max="48"/>
+      <summary>Icon size in pixels for the System Menu button</summary>
+    </key>
+
+    <key name="hide-overview-button" type="b"><default>false</default><summary>Hide the Activities/overview button</summary></key>
+
+    <key name="show-app-grid" type="b"><default>true</default><summary>Show App Grid item in System Menu</summary></key>
+    <key name="show-software-center" type="b"><default>true</default><summary>Show Software Center item</summary></key>
+    <key name="software-center-command" type="s"><default>"gnome-software"</default><summary>Command for Software Center</summary></key>
+    <key name="show-system-monitor" type="b"><default>true</default><summary>Show System Monitor item</summary></key>
+    <key name="system-monitor-command" type="s"><default>"gnome-system-monitor"</default><summary>Command for System Monitor</summary></key>
+    <key name="show-terminal" type="b"><default>true</default><summary>Show Terminal item</summary></key>
+    <key name="terminal-command" type="s"><default>"ptyxis"</default><summary>Command for Terminal</summary></key>
+    <key name="show-extensions-app" type="b"><default>true</default><summary>Show Extensions item</summary></key>
+    <key name="extensions-app-id" type="s">
+      <default>"org.gnome.Extensions.desktop"</default>
+      <summary>Desktop file ID of the extensions manager app to launch</summary>
+      <description>e.g. "org.gnome.Extensions.desktop" or "com.mattjakeman.ExtensionManager.desktop"</description>
+    </key>
+    <key name="show-force-quit" type="b"><default>true</default><summary>Show Force Quit App item</summary></key>
+    <key name="show-power-options" type="b"><default>true</default><summary>Show Sleep/Restart/Shut Down items</summary></key>
+    <key name="show-lock-screen" type="b"><default>true</default><summary>Show Lock Screen item</summary></key>
+    <key name="show-log-out" type="b"><default>true</default><summary>Show Log Out item</summary></key>
+
+    <key name="system-menu-custom-items" type="s">
+      <default>"[]"</default>
+      <summary>JSON list of custom shell-command items added to the System Menu</summary>
+      <description>Each entry: {label, value}. Appears as its own section at the bottom of the System Menu.</description>
+    </key>
+
+    <key name="desktop-app-name" type="s">
+      <default>"Nautilus"</default>
+      <summary>Name shown for the file manager / desktop placeholder in the App menu</summary>
+      <description>Used for the App menu label and File menu items (e.g. "About X", "Open X", "New X Window") when no other app is focused.</description>
     </key>
   </schema>
 </schemalist>

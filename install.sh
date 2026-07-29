@@ -13,12 +13,14 @@ rm -rf "$EXTENSION_DIR"
 mkdir -p "$EXTENSION_DIR"
 
 echo "📄 Copying extension files..."
-cp -rv "$SOURCE_DIR/metadata.json" "$EXTENSION_DIR/"
-cp -rv "$SOURCE_DIR/extension.js" "$EXTENSION_DIR/"
-cp -rv "$SOURCE_DIR/menuManager.js" "$EXTENSION_DIR/"
-cp -rv "$SOURCE_DIR/logs.sh" "$EXTENSION_DIR/"
-cp -rv "$SOURCE_DIR/uninstall.sh" "$EXTENSION_DIR/"
+# Copy every .js file and the schemas/ directory automatically, so newly
+# added source files are never silently left out of the installed copy.
+cp -v "$SOURCE_DIR"/*.js "$EXTENSION_DIR/"
+cp -v "$SOURCE_DIR/metadata.json" "$EXTENSION_DIR/"
 cp -rv "$SOURCE_DIR/schemas" "$EXTENSION_DIR/"
+cp -rv "$SOURCE_DIR/icons" "$EXTENSION_DIR/"
+cp -v "$SOURCE_DIR/uninstall.sh" "$EXTENSION_DIR/" 2>/dev/null
+cp -v "$SOURCE_DIR/logs.sh" "$EXTENSION_DIR/" 2>/dev/null
 
 echo "⚙️ Compiling GSettings schemas..."
 glib-compile-schemas "$EXTENSION_DIR/schemas/"

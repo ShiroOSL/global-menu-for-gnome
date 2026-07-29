@@ -1,8 +1,8 @@
 {
   "uuid": "globalmenu@ShiroOSL.github.io",
   "name": "Global Menu for GNOME",
-  "description": "A global menu inspired by the macOS desktop experience, supporting standard window actions, history navigation, and quick editing shortcuts and more.",
-  "version": 4,
+  "description": "Brings a macOS-style global menu bar to GNOME. Adds contextual File, Edit, View, Go, Window, and Help menus for the focused app, plus a configurable System Menu with quick access to Settings, Terminal, Software Center, Force Quit, and power options. Create your own custom menus with shell commands or keyboard shortcuts, and personalize the System Menu icon from bundled distro logos, an Apple-style icon, or your own image.",
+  "version": 10,
   "shell-version": [
     "45",
     "46",
@@ -11,5 +11,6 @@
     "49",
     "50"
   ],
-  "url": "https://github.com/ShiroOSL/global-menu-for-gnome"
+  "url": "https://github.com/ShiroOSL/global-menu-for-gnome",
+  "settings-schema": "org.gnome.shell.extensions.globalmenu"
 }
