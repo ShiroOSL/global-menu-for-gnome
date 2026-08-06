@@ -6,6 +6,7 @@ import Shell from 'gi://Shell';
 import * as PanelMenu from "resource:///org/gnome/shell/ui/panelMenu.js";
 import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
+import * as SystemActions from 'resource:///org/gnome/shell/misc/systemActions.js';
 
 function spawnCommandLine(commandLine) {
     try {
@@ -43,6 +44,7 @@ export const SystemMenuButton = GObject.registerClass(
 
         this._settings = settings;
         this._extensionPath = extensionPath;
+        this._systemActions = SystemActions.getDefault();
 
         this._icon = new St.Icon({
             style_class: 'globalmenu-logo-icon system-status-icon',
@@ -64,7 +66,7 @@ export const SystemMenuButton = GObject.registerClass(
             }
         });
 
-        this.connect('destroy', () => this._onDestroy());
+        this.connect('destroy', this._onDestroy.bind(this));
     }
 
     _syncIcon() {
@@ -156,16 +158,16 @@ export const SystemMenuButton = GObject.registerClass(
             this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
         if (showPowerOptions) {
-            this._addItem('Sleep', () => spawnCommandLine('systemctl suspend'));
-            this._addItem('Restart...', () => spawnCommandLine('gnome-session-quit --reboot'));
-            this._addItem('Shut Down...', () => spawnCommandLine('gnome-session-quit --power-off'));
+            this._addItem('Sleep', () => this._systemActions.activateSuspend());
+            this._addItem('Restart...', () => this._systemActions.activateRestart());
+            this._addItem('Shut Down...', () => this._systemActions.activatePowerOff());
         }
 
         if (showLockScreen)
-            this._addItem('Lock Screen', () => spawnCommandLine('loginctl lock-session'));
+            this._addItem('Lock Screen', () => this._systemActions.activateLockScreen());
 
         if (showLogOut)
-            this._addItem('Log Out...', () => spawnCommandLine('gnome-session-quit --logout'));
+            this._addItem('Log Out...', () => this._systemActions.activateLogout());
     }
 
     _addItem(label, activateFunction) {
@@ -238,6 +240,10 @@ export const SystemMenuButton = GObject.registerClass(
             this._settings.disconnect(this._settingsChangedId);
             this._settingsChangedId = null;
         }
+        this._settings = null;
+        this._systemActions = null;
+        this._extensionPath = null;
+        this._icon = null;
     }
   }
 );

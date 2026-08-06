@@ -116,6 +116,16 @@ export default class GlobalMenuPreferences extends ExtensionPreferences {
         powerGroup.add(logoutRow);
         settings.bind('show-log-out', logoutRow, 'active', Gio.SettingsBindFlags.DEFAULT);
 
+        const advancedGroup = new Adw.PreferencesGroup({
+            title: 'Advanced',
+            description: 'Off by default; turn on temporarily if you need to diagnose an issue',
+        });
+        page.add(advancedGroup);
+
+        const debugRow = new Adw.SwitchRow({ title: 'Verbose Error Logging' });
+        advancedGroup.add(debugRow);
+        settings.bind('debug-logging', debugRow, 'active', Gio.SettingsBindFlags.DEFAULT);
+
         return page;
     }
 

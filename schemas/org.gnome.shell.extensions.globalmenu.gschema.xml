@@ -73,5 +73,11 @@
       <summary>Name shown for the file manager / desktop placeholder in the App menu</summary>
       <description>Used for the App menu label and File menu items (e.g. "About X", "Open X", "New X Window") when no other app is focused.</description>
     </key>
+
+    <key name="debug-logging" type="b">
+      <default>false</default>
+      <summary>Enable verbose error logging to the system journal</summary>
+      <description>Off by default to avoid excessive logging; turn on temporarily when diagnosing an issue.</description>
+    </key>
   </schema>
 </schemalist>

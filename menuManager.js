@@ -8,6 +8,15 @@ import * as PanelMenu from "resource:///org/gnome/shell/ui/panelMenu.js";
 import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 
+// Error logging is gated behind the "debug-logging" setting (off by
+// default) so the extension doesn't spam the journal in normal use.
+// MenuManager keeps this in sync with the setting; toggled live.
+let debugLoggingEnabled = false;
+
+function logError(message) {
+    if (debugLoggingEnabled) console.error(message);
+}
+
 // Spawn a command safely using an argv array so no shell parsing/injection
 // can occur, and so arguments with spaces or special characters are passed
 // through intact.
@@ -21,7 +30,7 @@ function spawnCommand(argv) {
             null
         );
     } catch (e) {
-        console.error(`[globalmenu] Failed to spawn '${argv.join(' ')}': ${e}`);
+        logError(`[globalmenu] Failed to spawn '${argv.join(' ')}': ${e}`);
     }
 }
 
@@ -66,7 +75,7 @@ const TopLevelMenuButton = GObject.registerClass(
                 let [, argv] = GLib.shell_parse_argv(cmd);
                 spawnCommand(argv);
             } catch (e) {
-                console.error(`[globalmenu] Invalid custom command '${cmd}': ${e}`);
+                logError(`[globalmenu] Invalid custom command '${cmd}': ${e}`);
             }
             return true;
         }
@@ -139,7 +148,7 @@ const TopLevelMenuButton = GObject.registerClass(
                 return true;
             }
         } catch (e) {
-            console.error(`[globalmenu] Process execution error: ${e}`);
+            logError(`[globalmenu] Process execution error: ${e}`);
         }
 
         try {
@@ -228,7 +237,7 @@ const TopLevelMenuButton = GObject.registerClass(
                 }
             }
         } catch (e) {
-            console.error(`[globalmenu] Virtual Keyboard error: ${e}`);
+            logError(`[globalmenu] Virtual Keyboard error: ${e}`);
         }
 
         return false;
@@ -240,7 +249,7 @@ const TopLevelMenuButton = GObject.registerClass(
         try {
             let [success, keyval, mods] = Clutter.accelerator_parse(accel);
             if (!success) {
-                console.error(`[globalmenu] Could not parse shortcut '${accel}'`);
+                logError(`[globalmenu] Could not parse shortcut '${accel}'`);
                 return;
             }
 
@@ -268,7 +277,7 @@ const TopLevelMenuButton = GObject.registerClass(
                 t += 5;
             });
         } catch (e) {
-            console.error(`[globalmenu] Failed to send accelerator '${accel}': ${e}`);
+            logError(`[globalmenu] Failed to send accelerator '${accel}': ${e}`);
         }
     }
 
@@ -289,7 +298,7 @@ const TopLevelMenuButton = GObject.registerClass(
 
             file.make_directory(null);
         } catch (e) {
-            console.error(`[globalmenu] Failed to create new folder: ${e}`);
+            logError(`[globalmenu] Failed to create new folder: ${e}`);
         }
     }
 
@@ -337,6 +346,11 @@ export class MenuManager {
         this._settings = settings;
         this._buttons = [];
         this._blacklist = ['gjs', 'org.gnome.gjs', 'gnome-shell', 'mutter', 'nautilus', 'org.gnome.nautilus'];
+
+        debugLoggingEnabled = settings.get_boolean('debug-logging');
+        this._debugLoggingChangedId = settings.connect('changed::debug-logging', () => {
+            debugLoggingEnabled = settings.get_boolean('debug-logging');
+        });
     }
 
     updateMenuForWindow(window) {
@@ -558,6 +572,10 @@ export class MenuManager {
     }
 
     destroy() {
+        if (this._settings && this._debugLoggingChangedId) {
+            this._settings.disconnect(this._debugLoggingChangedId);
+            this._debugLoggingChangedId = null;
+        }
         this.clear();
     }
 }
