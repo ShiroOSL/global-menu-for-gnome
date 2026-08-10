@@ -37,7 +37,7 @@ function spawnCommand(argv) {
 const TopLevelMenuButton = GObject.registerClass(
   class TopLevelMenuButton extends PanelMenu.Button {
     _init(label, children, appInstance = null) {
-      super._init(0.0, label);
+      super._init(0.5, label);
       this._appInstance = appInstance;
       this._timeoutIds = [];
 
@@ -49,6 +49,26 @@ const TopLevelMenuButton = GObject.registerClass(
       this.add_child(title);
       
       this._buildSubMenu(children, this.menu);
+
+      if (this.menu) {
+          this.menu.connect('open-state-changed', (_menu, _isOpen) => {
+              this._alignMenuToLeft();
+          });
+      }
+    }
+
+    _alignMenuToLeft() {
+        if (!this.menu || !this.menu.actor) return;
+        try {
+            let buttonWidth = Math.round(this.get_width() || 0);
+            let menuWidth = Math.round(this.menu.actor.get_width() || 0);
+            if (buttonWidth > 0 && menuWidth > 0) {
+                let offset = Math.round((menuWidth - buttonWidth) / 2);
+                this.menu.actor.translation_x = offset;
+            }
+        } catch (e) {
+            logError(`[globalmenu] Error aligning menu: ${e}`);
+        }
     }
 
     _executeNativeAction(action) {
