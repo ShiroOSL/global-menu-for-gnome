@@ -33,7 +33,7 @@ bash install.sh
 
 🔄 **Apply changes:**
 - On Wayland: log out of your desktop session and log back in.
-- On X11: press `Alt + F2`, type `r`, and hit Enter to reload GNOME Shell.
+- On X11: press `Alt + F2`, type `r`, and hit Enter to reeload GNOME Shell.
 
 Then enable **Global Menu for GNOME** using the Extensions app or Extension Manager.
 
