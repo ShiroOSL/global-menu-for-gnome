@@ -1,14 +1,5 @@
 # Global Menu for GNOME
 
-> [!IMPORTANT]
-> **Notice regarding v9 Settings Issue**
->
-> If you are using **Version 9** from the GNOME Extensions website and the settings button is not working, please be aware that this is a known issue. **This happens because Version 9 does not have a preferences panel yet (the `prefs.js` file had not been created in that version).**
->
-> **Versions 10 and 11 were rejected during review**, and I am currently waiting for **Version 12** (which includes the new preferences panel) to be approved. 
->
-> **Please do not open new issues about this specific problem.** If you need the settings functionality immediately, please install the extension from the source code here on GitHub.
-
 Global Menu for GNOME brings a clean, streamlined desktop layout to your system by adding a dedicated application menu directly into the GNOME top panel. Inspired by the sleek aesthetic of macOS, this extension places essential window actions, navigation controls, a System Menu, and quick-access options into a single unified top-bar component.
 
 ## 🚀 Installation
