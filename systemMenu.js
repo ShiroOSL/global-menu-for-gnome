@@ -54,7 +54,7 @@ export const SystemMenuButton = GObject.registerClass(
         this._syncIcon();
         this._rebuildMenu();
 
-        this._settingsChangedId = this._settings.connect('changed', (_settings, key) => {
+        this._settings.connect_object('changed', (_settings, key) => {
             if (['logo-icon-name', 'logo-custom-icon-path', 'logo-distro-icon',
                  'logo-distro-icon-symbolic', 'logo-icon-size'].includes(key)) {
                 this._syncIcon();
@@ -64,7 +64,7 @@ export const SystemMenuButton = GObject.registerClass(
                         'show-log-out', 'system-menu-custom-items'].includes(key)) {
                 this._rebuildMenu();
             }
-        });
+        }, this);
 
         this.connect('destroy', this._onDestroy.bind(this));
     }
@@ -236,10 +236,6 @@ export const SystemMenuButton = GObject.registerClass(
     }
 
     _onDestroy() {
-        if (this._settings && this._settingsChangedId) {
-            this._settings.disconnect(this._settingsChangedId);
-            this._settingsChangedId = null;
-        }
         this._settings = null;
         this._systemActions = null;
         this._extensionPath = null;
