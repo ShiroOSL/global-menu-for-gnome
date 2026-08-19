@@ -54,7 +54,7 @@ export const SystemMenuButton = GObject.registerClass(
         this._syncIcon();
         this._rebuildMenu();
 
-        this._settings.connect_object('changed', (_settings, key) => {
+        this._settings.connectObject('changed', (_settings, key) => {
             if (['logo-icon-name', 'logo-custom-icon-path', 'logo-distro-icon',
                  'logo-distro-icon-symbolic', 'logo-icon-size'].includes(key)) {
                 this._syncIcon();

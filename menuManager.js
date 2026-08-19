@@ -51,7 +51,7 @@ const TopLevelMenuButton = GObject.registerClass(
       this._buildSubMenu(children, this.menu);
 
       if (this.menu) {
-          this.menu.connect_object('open-state-changed', (_menu, _isOpen) => {
+          this.menu.connectObject('open-state-changed', (_menu, _isOpen) => {
               this._alignMenuToLeft();
           }, this);
       }
