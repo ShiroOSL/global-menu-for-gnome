@@ -1,0 +1,125 @@
+/* Layout-only rules. Colors, backgrounds, borders, and text color are
+ * intentionally NOT set here — the panel uses GNOME Shell's own
+ * "popup-menu-content" / "popup-menu-item" / "button" style classes so it
+ * automatically matches whatever shell theme (Adwaita, Yaru, etc.) the
+ * user has applied, instead of a hardcoded look. */
+
+.globalmenu-clipboard-panel {
+    padding: 10px;
+    spacing: 8px;
+}
+
+.globalmenu-clipboard-header {
+    spacing: 8px;
+}
+
+.globalmenu-clipboard-title {
+    font-weight: bold;
+    x-expand: true;
+}
+
+.globalmenu-clipboard-clearbtn,
+.globalmenu-clipboard-closebtn,
+.globalmenu-clipboard-pinbtn,
+.globalmenu-clipboard-removebtn {
+    padding: 4px 8px;
+}
+
+.globalmenu-clipboard-scroll {
+    max-height: 400px;
+}
+
+.globalmenu-clipboard-list {
+    spacing: 4px;
+}
+
+.globalmenu-clipboard-empty {
+    padding: 20px;
+}
+
+.globalmenu-clipboard-card {
+    padding: 8px 10px;
+}
+
+.globalmenu-clipboard-pinbtn-active {
+    color: #f5c211;
+    font-weight: bold;
+}
+
+
+/* --- Emoji & Symbols picker --- */
+
+.globalmenu-emoji-panel {
+    padding: 10px;
+    spacing: 8px;
+}
+
+.globalmenu-emoji-header {
+    spacing: 8px;
+}
+
+.globalmenu-emoji-title {
+    font-weight: bold;
+    x-expand: true;
+}
+
+.globalmenu-emoji-closebtn {
+    padding: 4px 8px;
+}
+
+.globalmenu-emoji-search {
+    padding: 6px 8px;
+}
+
+.globalmenu-emoji-tabs-scroll {
+    min-height: 40px;
+}
+
+.globalmenu-emoji-tabs {
+    spacing: 6px;
+    padding: 4px 0;
+}
+
+.globalmenu-emoji-tab {
+    font-size: 10pt;
+    padding: 6px 12px;
+    border-radius: 8px;
+    white-space: nowrap;
+}
+
+.globalmenu-emoji-tab-active {
+    background-color: rgba(127, 127, 127, 0.25);
+}
+
+.globalmenu-emoji-scroll {
+    max-height: 340px;
+}
+
+.globalmenu-emoji-grid {
+    spacing: 4px;
+}
+
+.globalmenu-emoji-row {
+    spacing: 4px;
+}
+
+.globalmenu-emoji-btn {
+    font-size: 18pt;
+    padding: 6px;
+    min-width: 40px;
+    min-height: 40px;
+}
+
+.globalmenu-emoji-empty {
+    padding: 20px;
+}
+
+
+/* --- Recent Items flyout (a real PopupMenu.PopupMenu, styled narrower
+ * than the default so it doesn't dominate the screen next to the main
+ * System Menu — matches Kiwi Menu's/macOS's slimmer submenu width) --- */
+
+.globalmenu-recent-flyout {
+    min-width: 220px;
+    max-width: 280px;
+}

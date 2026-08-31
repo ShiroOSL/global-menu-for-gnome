@@ -7,6 +7,8 @@ import Shell from 'gi://Shell';
 import * as PanelMenu from "resource:///org/gnome/shell/ui/panelMenu.js";
 import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
+import { ClipboardHistoryStore, ClipboardPanel } from './clipboardHistory.js';
+import { EmojiPicker } from './emojiPicker.js';
 
 // Error logging is gated behind the "debug-logging" setting (off by
 // default) so the extension doesn't spam the journal in normal use.
@@ -36,9 +38,11 @@ function spawnCommand(argv) {
 
 const TopLevelMenuButton = GObject.registerClass(
   class TopLevelMenuButton extends PanelMenu.Button {
-    _init(label, children, appInstance = null) {
+    _init(label, children, appInstance = null, clipboardPanel = null, emojiPicker = null) {
       super._init(0.5, label);
       this._appInstance = appInstance;
+      this._clipboardPanel = clipboardPanel;
+      this._emojiPicker = emojiPicker;
       this._timeoutIds = [];
 
       let title = new St.Label({
@@ -231,7 +235,6 @@ const TopLevelMenuButton = GObject.registerClass(
                 else if (action === "select-all") actionScanCode = 30; 
                 else if (action === "new-tab") actionScanCode = 28;    
                 else if (action === "print") actionScanCode = 25; // Ctrl + P
-                else if (action === "emoji-picker") actionScanCode = 52; // Ctrl + . (Period)
                 else if (action === "toggle-fullscreen") {
                     useModifier = false;
                     actionScanCode = 87; // F11 key
@@ -347,14 +350,25 @@ const TopLevelMenuButton = GObject.registerClass(
           headerItem.label.add_style_class_name('popup-subtitle-menu-item');
           parentMenu.addMenuItem(headerItem);
         } else if (item.type === "submenu") {
-          const subMenu = new PopupMenu.PopupSubMenuMenuItem(item.label);
+          const subMenu = new PopupMenu.PopupSubMenuMenuItem(item.label, !!item.icon);
+          if (item.icon) subMenu.icon.icon_name = item.icon;
           this._buildSubMenu(item.children, subMenu.menu);
           parentMenu.addMenuItem(subMenu);
         } else {
-          const menuItem = new PopupMenu.PopupMenuItem(item.label);
+          const menuItem = item.icon
+            ? new PopupMenu.PopupImageMenuItem(item.label, item.icon)
+            : new PopupMenu.PopupMenuItem(item.label);
           if (item.enabled === false) {
             // Unimplemented placeholder item.
             menuItem.setSensitive(false);
+          } else if (item.action === "show-clipboard") {
+            menuItem.connect("activate", () => {
+              if (this._clipboardPanel) this._clipboardPanel.toggle(this);
+            });
+          } else if (item.action === "emoji-picker") {
+            menuItem.connect("activate", () => {
+              if (this._emojiPicker) this._emojiPicker.toggle(this);
+            });
           } else if (item.action) {
             menuItem.connect("activate", () => {
               this._executeNativeAction(item.action);
@@ -380,12 +394,17 @@ export class MenuManager {
         this.uuid = uuid;
         this._settings = settings;
         this._buttons = [];
-        this._blacklist = ['gjs', 'org.gnome.gjs', 'gnome-shell', 'mutter', 'nautilus', 'org.gnome.nautilus'];
+        this._blacklist = ['gjs', 'org.gnome.gjs', 'gnome-shell', 'mutter', 'nautilus', 'org.gnome.nautilus', 'io.github.shiroosl.globalmenu'];
 
         debugLoggingEnabled = settings.get_boolean('debug-logging');
         this._debugLoggingChangedId = settings.connect('changed::debug-logging', () => {
             debugLoggingEnabled = settings.get_boolean('debug-logging');
         });
+
+        this._clipboardStore = new ClipboardHistoryStore(settings);
+        this._clipboardStore.start();
+        this._clipboardPanel = new ClipboardPanel(this._clipboardStore);
+        this._emojiPicker = new EmojiPicker();
     }
 
     updateMenuForWindow(window) {
@@ -439,111 +458,119 @@ export class MenuManager {
                     openWindows.forEach(win => {
                         firstMenuChildren.push({
                             label: win.get_title() || appName,
-                            action: `activate-window:${win.get_id()}`
+                            action: `activate-window:${win.get_id()}`,
+                            icon: "window-symbolic"
                         });
                     });
                     firstMenuChildren.push({ type: "separator" });
                 }
             }
             firstMenuChildren.push(
-                { label: "New Window", action: "new-app-window" },
+                { label: "New Window", action: "new-app-window", icon: "window-new-symbolic" },
                 { type: "separator" },
-                { label: "App Details", action: `app-details:${desktopId}` },
+                { label: "App Details", action: `app-details:${desktopId}`, icon: "dialog-information-symbolic" },
                 { type: "separator" },
-                { label: `Quit ${appName}`, action: "close" }
+                { label: `Quit ${appName}`, action: "close", icon: "application-exit-symbolic" }
             );
         } else {
             firstMenuChildren = [
-                { label: `About ${desktopAppName}`, enabled: false },
+                { label: `About ${desktopAppName}`, enabled: false, icon: "dialog-information-symbolic" },
                 { type: "separator" },
-                { label: `Open ${desktopAppName}`, action: "open-file-manager" },
-                { label: "Settings", action: "open-settings" },
+                { label: `Open ${desktopAppName}`, action: "open-file-manager", icon: "folder-symbolic" },
+                { label: "Settings", action: "open-settings", icon: "preferences-system-symbolic" },
                 { type: "separator" },
-                { label: "Empty Bin...", action: "empty-bin" }
+                { label: "Empty Bin...", action: "empty-bin", icon: "user-trash-full-symbolic" }
             ];
         }
 
         const fileMenu = {
             type: "submenu",
             label: "File",
+            icon: "folder-symbolic",
             children: [
-                { label: `New ${desktopAppName} Window`, action: "new-file-manager-win" },
-                { label: "New Folder", action: "new-folder" },
-                { label: "New Tab", action: "new-tab" },
-                { label: "Open", action: "virtual-open" },
-                { label: "Open With", action: "native-open-with" },
-                { label: "Print", action: "print" },
+                { label: `New ${desktopAppName} Window`, action: "new-file-manager-win", icon: "window-new-symbolic" },
+                { label: "New Folder", action: "new-folder", icon: "folder-new-symbolic" },
+                { label: "New Tab", action: "new-tab", icon: "tab-new-symbolic" },
+                { label: "Open", action: "virtual-open", icon: "document-open-symbolic" },
+                { label: "Open With", action: "native-open-with", icon: "document-open-symbolic" },
+                { label: "Print", action: "print", icon: "document-print-symbolic" },
                 { type: "separator" },
-                { label: "Get Info", action: "properties" },
-                { label: "Compress", enabled: false },
-                { label: "Duplicate", enabled: false },
+                { label: "Get Info", action: "properties", icon: "dialog-information-symbolic" },
+                { label: "Compress", enabled: false, icon: "package-x-generic-symbolic" },
+                { label: "Duplicate", enabled: false, icon: "edit-copy-symbolic" },
                 { type: "separator" },
-                { label: "Move to Trash", action: "delete-item" },
+                { label: "Move to Trash", action: "delete-item", icon: "user-trash-symbolic" },
                 { type: "separator" },
-                { label: "Close Window", action: "close" }
+                { label: "Close Window", action: "close", icon: "window-close-symbolic" }
             ]
         };
 
         const editMenu = {
             type: "submenu",
             label: "Edit",
+            icon: "document-edit-symbolic",
             children: [
-                { label: "Undo", action: "undo" },
-                { label: "Redo", action: "redo" },
+                { label: "Undo", action: "undo", icon: "edit-undo-symbolic" },
+                { label: "Redo", action: "redo", icon: "edit-redo-symbolic" },
                 { type: "separator" },
-                { label: "Cut", action: "cut" },
-                { label: "Copy", action: "copy" },
-                { label: "Paste", action: "paste" },
-                { label: "Delete", action: "delete-item" },
+                { label: "Cut", action: "cut", icon: "edit-cut-symbolic" },
+                { label: "Copy", action: "copy", icon: "edit-copy-symbolic" },
+                { label: "Paste", action: "paste", icon: "edit-paste-symbolic" },
+                { label: "Delete", action: "delete-item", icon: "edit-delete-symbolic" },
+                { label: "Select All", action: "select-all", icon: "edit-select-all-symbolic" },
                 { type: "separator" },
-                { label: "Select All", action: "select-all" },
+                { label: "Show Clipboard", action: "show-clipboard", icon: "edit-paste-symbolic" },
                 { type: "separator" },
-                { label: "Emoji & Symbols", action: "emoji-picker" }
+                { label: "Emoji & Symbols", action: "emoji-picker", icon: "face-smile-symbolic" }
             ]
         };
 
         const viewMenu = {
             type: "submenu",
             label: "View",
+            icon: "view-grid-symbolic",
             children: [
-                { label: "as Icons", enabled: false },
-                { label: "as List", enabled: false },
+                { label: "as Icons", enabled: false, icon: "view-grid-symbolic" },
+                { label: "as List", enabled: false, icon: "view-list-symbolic" },
                 { type: "separator" },
-                { label: "Enter Full Screen", action: "toggle-fullscreen" }
+                { label: "Enter Full Screen", action: "toggle-fullscreen", icon: "view-fullscreen-symbolic" }
             ]
         };
 
         const goMenu = {
             type: "submenu",
             label: "Go",
+            icon: "compass-symbolic",
             children: [
-                { label: "Back", action: "go-back" },
-                { label: "Forward", action: "go-forward" },
+                { label: "Back", action: "go-back", icon: "go-previous-symbolic" },
+                { label: "Forward", action: "go-forward", icon: "go-next-symbolic" },
                 { type: "separator" },
-                { label: "Recents", action: "go-recents" },
-                { label: "Documents", action: "go-documents" },
-                { label: "Desktop", action: "go-desktop" },
-                { label: "Downloads", action: "go-downloads" },
-                { label: "Home", action: "go-home" }
+                { label: "Recents", action: "go-recents", icon: "document-open-recent-symbolic" },
+                { label: "Documents", action: "go-documents", icon: "folder-documents-symbolic" },
+                { label: "Desktop", action: "go-desktop", icon: "user-desktop-symbolic" },
+                { label: "Downloads", action: "go-downloads", icon: "folder-download-symbolic" },
+                { label: "Home", action: "go-home", icon: "go-home-symbolic" }
             ]
         };
 
         const windowMenu = {
             type: "submenu",
             label: "Window",
+            icon: "preferences-system-windows-symbolic",
             children: [
-                { label: "Minimize", action: "minimize" },
-                { label: "Maximize", action: "maximize" },
+                { label: "Minimize", action: "minimize", icon: "window-minimize-symbolic" },
+                { label: "Maximize", action: "maximize", icon: "window-maximize-symbolic" },
                 { type: "separator" },
-                { label: "Close", action: "close" }
+                { label: "Close", action: "close", icon: "window-close-symbolic" }
             ]
         };
 
         const helpMenu = {
             type: "submenu",
             label: "Help",
+            icon: "help-about-symbolic",
             children: [
-                { label: "GNOME Help", action: "open-system-help" }
+                { label: "GNOME Help", action: "open-system-help", icon: "help-browser-symbolic" }
             ]
         };
 
@@ -565,7 +592,7 @@ export class MenuManager {
         this.clear();
 
         menuData.forEach((item, index) => {
-            let btn = new TopLevelMenuButton(item.label, item.children, detectedApp);
+            let btn = new TopLevelMenuButton(item.label, item.children, detectedApp, this._clipboardPanel, this._emojiPicker);
             Main.panel.addToStatusArea(`${this.uuid}-${index}`, btn, index + 1, 'left');
             this._buttons.push(btn);
         });
@@ -610,6 +637,18 @@ export class MenuManager {
         if (this._settings && this._debugLoggingChangedId) {
             this._settings.disconnect(this._debugLoggingChangedId);
             this._debugLoggingChangedId = null;
+        }
+        if (this._clipboardPanel) {
+            this._clipboardPanel.destroy();
+            this._clipboardPanel = null;
+        }
+        if (this._clipboardStore) {
+            this._clipboardStore.destroy();
+            this._clipboardStore = null;
+        }
+        if (this._emojiPicker) {
+            this._emojiPicker.destroy();
+            this._emojiPicker = null;
         }
         this.clear();
     }

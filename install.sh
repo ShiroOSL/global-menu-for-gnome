@@ -17,6 +17,7 @@ echo "📄 Copying extension files..."
 # added source files are never silently left out of the installed copy.
 cp -v "$SOURCE_DIR"/*.js "$EXTENSION_DIR/"
 cp -v "$SOURCE_DIR/metadata.json" "$EXTENSION_DIR/"
+cp -v "$SOURCE_DIR/stylesheet.css" "$EXTENSION_DIR/" 2>/dev/null
 cp -rv "$SOURCE_DIR/schemas" "$EXTENSION_DIR/"
 cp -rv "$SOURCE_DIR/icons" "$EXTENSION_DIR/"
 cp -v "$SOURCE_DIR/uninstall.sh" "$EXTENSION_DIR/" 2>/dev/null

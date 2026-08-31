@@ -646,6 +646,18 @@ export default class GlobalMenuPreferences extends ExtensionPreferences {
             group.add(bugRow);
         }
 
+        const kofiUrl = 'https://ko-fi.com/shiro_osl';
+        const supportRow = new Adw.ActionRow({
+            title: 'Support the Development',
+            subtitle: kofiUrl,
+            activatable: true,
+        });
+        supportRow.add_prefix(new Gtk.Image({ icon_name: 'emblem-favorite-symbolic' }));
+        supportRow.connect('activated', () => {
+            Gio.AppInfo.launch_default_for_uri(kofiUrl, null);
+        });
+        group.add(supportRow);
+
         const noteGroup = new Adw.PreferencesGroup({ title: 'Notes' });
         page.add(noteGroup);
 

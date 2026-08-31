@@ -7,13 +7,22 @@ import * as PanelMenu from "resource:///org/gnome/shell/ui/panelMenu.js";
 import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as SystemActions from 'resource:///org/gnome/shell/misc/systemActions.js';
+import { RecentItemsSubmenu, setDebugLogging } from './recentItemsSubmenu.js';
+
+// Kept in sync with the "debug-logging" setting by SystemMenuButton, so
+// this module's own errors are gated the same way as recentItemsSubmenu.js.
+let debugLoggingEnabled = false;
+
+function logError(message) {
+    if (debugLoggingEnabled) console.error(message);
+}
 
 function spawnCommandLine(commandLine) {
     try {
         let [, argv] = GLib.shell_parse_argv(commandLine);
         GLib.spawn_async(null, argv, null, GLib.SpawnFlags.SEARCH_PATH, null);
     } catch (e) {
-        console.error(`[globalmenu] Failed to launch '${commandLine}': ${e}`);
+        logError(`[globalmenu] Failed to launch '${commandLine}': ${e}`);
     }
 }
 
@@ -45,17 +54,26 @@ export const SystemMenuButton = GObject.registerClass(
         this._settings = settings;
         this._extensionPath = extensionPath;
         this._systemActions = SystemActions.getDefault();
+        // Manages the Recent Items side-flyout so it participates in
+        // GNOME's normal click-away/escape-to-close popup handling.
+        this._menuManager = new PopupMenu.PopupMenuManager(this);
 
         this._icon = new St.Icon({
             style_class: 'globalmenu-logo-icon system-status-icon',
         });
         this.add_child(this._icon);
 
+        debugLoggingEnabled = this._settings.get_boolean('debug-logging');
+        setDebugLogging(debugLoggingEnabled);
+
         this._syncIcon();
         this._rebuildMenu();
 
         this._settings.connectObject('changed', (_settings, key) => {
-            if (['logo-icon-name', 'logo-custom-icon-path', 'logo-distro-icon',
+            if (key === 'debug-logging') {
+                debugLoggingEnabled = this._settings.get_boolean('debug-logging');
+                setDebugLogging(debugLoggingEnabled);
+            } else if (['logo-icon-name', 'logo-custom-icon-path', 'logo-distro-icon',
                  'logo-distro-icon-symbolic', 'logo-icon-size'].includes(key)) {
                 this._syncIcon();
             } else if (['hide-overview-button', 'show-app-grid', 'show-software-center',
@@ -118,39 +136,41 @@ export const SystemMenuButton = GObject.registerClass(
         const showLockScreen = this._settings.get_boolean('show-lock-screen');
         const showLogOut = this._settings.get_boolean('show-log-out');
 
-        this._addItem('About This System', () => this._aboutThisSystem());
+        this._addItem('About This System', () => this._aboutThisSystem(), 'dialog-information-symbolic');
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        this.menu.addMenuItem(new RecentItemsSubmenu(this.menu, this._menuManager));
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
         // Only offer an "Activities" menu entry when the real panel button
         // is hidden, so overview access is never lost entirely.
         if (hideOverview)
-            this._addItem('Activities', () => Main.overview.toggle());
+            this._addItem('Activities', () => Main.overview.toggle(), 'view-grid-symbolic');
 
         if (showAppGrid)
-            this._addItem('App Grid', () => this._showAppGrid());
+            this._addItem('App Grid', () => this._showAppGrid(), 'view-app-grid-symbolic');
 
         if (hideOverview || showAppGrid)
             this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
         if (showSoftwareCenter)
-            this._addItem('Software Center', () => this._launchOrNotify('software-center-command', SOFTWARE_CENTER_FALLBACKS, 'Software Center'));
+            this._addItem('Software Center', () => this._launchOrNotify('software-center-command', SOFTWARE_CENTER_FALLBACKS, 'Software Center'), 'software-store-symbolic');
         if (showSystemMonitor)
-            this._addItem('System Monitor', () => this._launchOrNotify('system-monitor-command', SYSTEM_MONITOR_FALLBACKS, 'System Monitor'));
+            this._addItem('System Monitor', () => this._launchOrNotify('system-monitor-command', SYSTEM_MONITOR_FALLBACKS, 'System Monitor'), 'utilities-system-monitor-symbolic');
         if (showTerminal)
-            this._addItem('Terminal', () => this._launchOrNotify('terminal-command', TERMINAL_FALLBACKS, 'Terminal'));
+            this._addItem('Terminal', () => this._launchOrNotify('terminal-command', TERMINAL_FALLBACKS, 'Terminal'), 'utilities-terminal-symbolic');
         if (showExtensionsApp)
-            this._addItem('Extensions', () => this._openExtensionsApp());
+            this._addItem('Extensions', () => this._openExtensionsApp(), 'application-x-addon-symbolic');
 
         if (showForceQuit) {
             this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-            this._addItem('Force Quit App', () => this._forceQuit());
+            this._addItem('Force Quit App', () => this._forceQuit(), 'process-stop-symbolic');
         }
 
         let customItems = this._loadCustomItems();
         if (customItems.length > 0) {
             this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
             customItems.forEach(item => {
-                this._addItem(item.label || '(untitled)', () => spawnCommandLine(item.value));
+                this._addItem(item.label || '(untitled)', () => spawnCommandLine(item.value), 'system-run-symbolic');
             });
         }
 
@@ -158,20 +178,25 @@ export const SystemMenuButton = GObject.registerClass(
             this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
         if (showPowerOptions) {
-            this._addItem('Sleep', () => this._systemActions.activateSuspend());
-            this._addItem('Restart...', () => this._systemActions.activateRestart());
-            this._addItem('Shut Down...', () => this._systemActions.activatePowerOff());
+            this._addItem('Sleep', () => this._systemActions.activateSuspend(), 'weather-clear-night-symbolic');
+            this._addItem('Restart...', () => this._systemActions.activateRestart(), 'system-reboot-symbolic');
+            this._addItem('Shut Down...', () => this._systemActions.activatePowerOff(), 'system-shutdown-symbolic');
         }
 
+        if (showPowerOptions && (showLockScreen || showLogOut))
+            this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
         if (showLockScreen)
-            this._addItem('Lock Screen', () => this._systemActions.activateLockScreen());
+            this._addItem('Lock Screen', () => this._systemActions.activateLockScreen(), 'system-lock-screen-symbolic');
 
         if (showLogOut)
-            this._addItem('Log Out...', () => this._systemActions.activateLogout());
+            this._addItem('Log Out...', () => this._systemActions.activateLogout(), 'system-log-out-symbolic');
     }
 
-    _addItem(label, activateFunction) {
-        let item = new PopupMenu.PopupMenuItem(label);
+    _addItem(label, activateFunction, iconName = null) {
+        let item = iconName
+            ? new PopupMenu.PopupImageMenuItem(label, iconName)
+            : new PopupMenu.PopupMenuItem(label);
         item.connect('activate', activateFunction);
         this.menu.addMenuItem(item);
         return item;
@@ -197,7 +222,14 @@ export const SystemMenuButton = GObject.registerClass(
     }
 
     _aboutThisSystem() {
-        spawnCommandLine('gnome-control-center system about');
+        let script = GLib.build_filenamev([this._extensionPath, 'systemInfoPanel.js']);
+        try {
+            let [, argv] = GLib.shell_parse_argv(`gjs -m ${GLib.shell_quote(script)}`);
+            GLib.spawn_async(null, argv, null, GLib.SpawnFlags.SEARCH_PATH, null);
+        } catch (e) {
+            logError(`[globalmenu] Failed to launch System Info window: ${e}`);
+            spawnCommandLine('gnome-control-center system about');
+        }
     }
 
     _showAppGrid() {
@@ -231,11 +263,12 @@ export const SystemMenuButton = GObject.registerClass(
         try {
             window.kill();
         } catch (e) {
-            console.error(`[globalmenu] Force Quit failed: ${e}`);
+            logError(`[globalmenu] Force Quit failed: ${e}`);
         }
     }
 
     _onDestroy() {
+        this._menuManager = null;
         this._settings = null;
         this._systemActions = null;
         this._extensionPath = null;
