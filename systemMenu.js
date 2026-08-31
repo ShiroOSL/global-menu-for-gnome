@@ -222,19 +222,13 @@ export const SystemMenuButton = GObject.registerClass(
     }
 
     _aboutThisSystem() {
-        // systemInfoPanel.js is a standalone GTK4/Adw script, launched as its
-        // own `gjs -m` process below rather than imported directly — importing
-        // it here would load Gtk4/Adw into GNOME Shell's own GJS context,
-        // which uses St/Clutter and cannot safely host a second toolkit.
-        // The `false &&` branch below is never taken (systemInfoPanel.js is
-        // never actually loaded into the Shell process); it exists only so
-        // static analysis can confirm this file is intentional and reachable
-        // rather than dead weight in the package.
-        // eslint-disable-next-line no-constant-condition
-        if (false) {
-            import('./systemInfoPanel.js');
-        }
-
+        // systemInfoPanel.js is a standalone GTK4/Adw script, spawned below
+        // as its own `gjs -m` process — it is intentionally NOT imported
+        // here (a static import would load Gtk4/Adw into GNOME Shell's own
+        // GJS context, which uses St/Clutter and cannot safely host a
+        // second toolkit; Shexli's EGO-I-002/EGO-L-001 checks confirm this
+        // is treated as a real import edge even when dead-code-guarded, so
+        // the file is shipped unimported and launched only via subprocess).
         let script = GLib.build_filenamev([this._extensionPath, 'systemInfoPanel.js']);
         try {
             let [, argv] = GLib.shell_parse_argv(`gjs -m ${GLib.shell_quote(script)}`);
