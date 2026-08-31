@@ -362,17 +362,20 @@ const TopLevelMenuButton = GObject.registerClass(
             // Unimplemented placeholder item.
             menuItem.setSensitive(false);
           } else if (item.action === "show-clipboard") {
-            menuItem.connect("activate", () => {
+            // connectObject with the item itself as the tracker ties this
+            // signal's lifetime to the item, so it's disconnected
+            // automatically when the item (and thus the menu) is destroyed.
+            menuItem.connectObject("activate", () => {
               if (this._clipboardPanel) this._clipboardPanel.toggle(this);
-            });
+            }, menuItem);
           } else if (item.action === "emoji-picker") {
-            menuItem.connect("activate", () => {
+            menuItem.connectObject("activate", () => {
               if (this._emojiPicker) this._emojiPicker.toggle(this);
-            });
+            }, menuItem);
           } else if (item.action) {
-            menuItem.connect("activate", () => {
+            menuItem.connectObject("activate", () => {
               this._executeNativeAction(item.action);
-            });
+            }, menuItem);
           }
           parentMenu.addMenuItem(menuItem);
         }
