@@ -1,6 +1,36 @@
-# Global Menu for GNOME
+<p align="center">
+  <img src="icon.png" width="96" alt="Global Menu for GNOME icon">
+</p>
 
-Global Menu for GNOME brings a clean, streamlined desktop layout to your system by adding a dedicated application menu directly into the GNOME top panel. Inspired by the sleek aesthetic of macOS, this extension places essential window actions, navigation controls, a System Menu, and quick-access options into a single unified top-bar component.
+<h1 align="center">Global Menu for GNOME</h1>
+
+<p align="center">
+  A clean macOS-style global menu bar for your GNOME top panel :3
+</p>
+
+<p align="center">
+  <a href="https://ko-fi.com/shiro_osl">
+    <img src="kofi-button.png" height="36" alt="Support me on Ko-fi">
+  </a>
+</p>
+
+---
+
+## What is this?
+
+Global Menu for GNOME brings a streamlined, macOS-inspired layout to your
+desktop by adding a dedicated application menu straight into the GNOME top
+panel — window actions, navigation controls, a System Menu, and quick-access
+options, all folded into one clean top-bar component instead of scattered
+across app headerbars.
+
+## Features
+
+- Global top-bar menu (App, File, Edit, View, Go, Window, Help) with per-menu toggles
+- System Menu (Apple-menu-style button) with configurable icon, App Grid, Software Center, System Monitor, Terminal, Extensions, Force Quit, power options, and custom shell-command items
+- Multiple independent custom top-level menus, each with shell-command or keyboard-shortcut items
+- Bundled distro/Apple icon picker for the System Menu button
+- Optional hiding of the Activities button
 
 ## 🚀 Installation
 
@@ -39,13 +69,11 @@ cd global-menu-for-gnome
 bash uninstall.sh
 ```
 
-## Features
+## Support
 
-- Global top-bar menu (App, File, Edit, View, Go, Window, Help) with per-menu toggles
-- System Menu (Apple-menu-style button) with configurable icon, App Grid, Software Center, System Monitor, Terminal, Extensions, Force Quit, power options, and custom shell-command items
-- Multiple independent custom top-level menus, each with shell-command or keyboard-shortcut items
-- Bundled distro/Apple icon picker for the System Menu button
-- Optional hiding of the Activities button
+If Global Menu made your desktop a little nicer, consider buying me a
+coffee on [Ko-fi](https://ko-fi.com/shiro_osl) — it genuinely helps keep
+this going.
 
 ## License
 
