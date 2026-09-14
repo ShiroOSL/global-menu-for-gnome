@@ -47,6 +47,18 @@ export default class GlobalMenuPreferences extends ExtensionPreferences {
         mainGroup.add(hideOverviewRow);
         settings.bind('hide-overview-button', hideOverviewRow, 'active', Gio.SettingsBindFlags.DEFAULT);
 
+        const keepActivitiesLeftRow = new Adw.SwitchRow({
+            title: 'Keep Activities on Far Left',
+            subtitle: 'Place the native Activities button before the System Menu logo and app menus',
+        });
+        mainGroup.add(keepActivitiesLeftRow);
+        settings.bind('keep-activities-left', keepActivitiesLeftRow, 'active', Gio.SettingsBindFlags.DEFAULT);
+
+        hideOverviewRow.connect('notify::active', () => {
+            keepActivitiesLeftRow.set_sensitive(!hideOverviewRow.get_active());
+        });
+        keepActivitiesLeftRow.set_sensitive(!settings.get_boolean('hide-overview-button'));
+
         const desktopNameRow = new Adw.EntryRow({ title: 'File Manager / Desktop Name' });
         desktopNameRow.set_text(settings.get_string('desktop-app-name'));
         desktopNameRow.connect('notify::text', () => settings.set_string('desktop-app-name', desktopNameRow.get_text() || 'Nautilus'));
@@ -58,7 +70,10 @@ export default class GlobalMenuPreferences extends ExtensionPreferences {
         });
         page.add(logoGroup);
 
-        const showLogoRow = new Adw.SwitchRow({ title: 'Show System Menu Button' });
+        const showLogoRow = new Adw.SwitchRow({
+            title: 'Show System Menu Button',
+            subtitle: 'If disabled, app menus start immediately next to Activities',
+        });
         logoGroup.add(showLogoRow);
         settings.bind('show-logo-menu', showLogoRow, 'active', Gio.SettingsBindFlags.DEFAULT);
 

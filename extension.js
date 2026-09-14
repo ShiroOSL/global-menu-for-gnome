@@ -25,10 +25,13 @@ export default class GlobalMenuExtension extends Extension {
         const ICON_ONLY_KEYS = ['logo-icon-name', 'logo-custom-icon-path', 'logo-distro-icon', 'logo-distro-icon-symbolic', 'logo-icon-size'];
 
         this._settingsChangedId = this._settings.connect('changed', (_settings, key) => {
-            if (key === 'hide-overview-button') {
+            if (key === 'hide-overview-button' || key === 'keep-activities-left') {
                 this._syncOverviewButton();
+                this._syncLogoPosition();
+                this._syncMenuVisibility();
             } else if (key === 'show-logo-menu') {
                 this._syncLogoButton();
+                this._syncMenuVisibility();
             } else if (!ICON_ONLY_KEYS.includes(key)) {
                 // Any other key (menu toggles, custom menus, indicator,
                 // logo-menu item toggles) affects what the bar should show
@@ -42,9 +45,23 @@ export default class GlobalMenuExtension extends Extension {
             this._syncMenuVisibility();
         }, this);
 
-        this._syncLogoButton();
         this._syncOverviewButton();
+        this._syncLogoButton();
         this._syncMenuVisibility();
+    }
+
+    _getLogoPosition() {
+        let hideOverview = this._settings.get_boolean('hide-overview-button');
+        let keepLeft = this._settings.get_boolean('keep-activities-left');
+        return (!hideOverview && keepLeft) ? 1 : 0;
+    }
+
+    _syncLogoPosition() {
+        if (!this._logoButton || !this._logoButton.container) return;
+        let targetPos = this._getLogoPosition();
+        if (this._logoButton.container.get_parent() === Main.panel._leftBox) {
+            Main.panel._leftBox.set_child_at_index(this._logoButton.container, targetPos);
+        }
     }
 
     _syncLogoButton() {
@@ -52,10 +69,13 @@ export default class GlobalMenuExtension extends Extension {
 
         if (shouldShow && !this._logoButton) {
             this._logoButton = new SystemMenuButton(this._settings, this.path);
-            Main.panel.addToStatusArea('globalmenu-logo', this._logoButton, 0, 'left');
+            let pos = this._getLogoPosition();
+            Main.panel.addToStatusArea('globalmenu-logo', this._logoButton, pos, 'left');
         } else if (!shouldShow && this._logoButton) {
             this._logoButton.destroy();
             this._logoButton = null;
+        } else if (shouldShow && this._logoButton) {
+            this._syncLogoPosition();
         }
     }
 
@@ -70,6 +90,12 @@ export default class GlobalMenuExtension extends Extension {
         } else if (!shouldHide && this._overviewHidden) {
             activities.show();
             this._overviewHidden = false;
+        }
+
+        if (!shouldHide && activities.container && activities.container.get_parent() === Main.panel._leftBox) {
+            let keepLeft = this._settings.get_boolean('keep-activities-left');
+            let targetPos = keepLeft ? 0 : (this._settings.get_boolean('show-logo-menu') ? 1 : 0);
+            Main.panel._leftBox.set_child_at_index(activities.container, targetPos);
         }
     }
 
@@ -104,10 +130,15 @@ export default class GlobalMenuExtension extends Extension {
             this._logoButton = null;
         }
 
-        if (this._overviewHidden) {
-            let activities = Main.panel.statusArea['activities'];
-            if (activities) activities.show();
-            this._overviewHidden = false;
+        let activities = Main.panel.statusArea['activities'];
+        if (activities) {
+            if (this._overviewHidden) {
+                activities.show();
+                this._overviewHidden = false;
+            }
+            if (activities.container && activities.container.get_parent() === Main.panel._leftBox) {
+                Main.panel._leftBox.set_child_at_index(activities.container, 0);
+            }
         }
 
         this._settings = null;

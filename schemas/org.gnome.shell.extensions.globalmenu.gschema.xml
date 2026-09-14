@@ -43,6 +43,11 @@
     </key>
 
     <key name="hide-overview-button" type="b"><default>false</default><summary>Hide the Activities/overview button</summary></key>
+    <key name="keep-activities-left" type="b">
+      <default>true</default>
+      <summary>Keep the Activities button on the far left</summary>
+      <description>When the Activities button is visible, place it on the far left (before the System Menu logo and app menus).</description>
+    </key>
 
     <key name="show-app-grid" type="b"><default>true</default><summary>Show App Grid item in System Menu</summary></key>
     <key name="show-software-center" type="b"><default>true</default><summary>Show Software Center item</summary></key>

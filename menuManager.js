@@ -594,9 +594,13 @@ export class MenuManager {
 
         this.clear();
 
+        let hideOverview = this._settings.get_boolean('hide-overview-button');
+        let showLogoMenu = this._settings.get_boolean('show-logo-menu');
+        let baseIndex = (hideOverview ? 0 : 1) + (showLogoMenu ? 1 : 0);
+
         menuData.forEach((item, index) => {
             let btn = new TopLevelMenuButton(item.label, item.children, detectedApp, this._clipboardPanel, this._emojiPicker);
-            Main.panel.addToStatusArea(`${this.uuid}-${index}`, btn, index + 1, 'left');
+            Main.panel.addToStatusArea(`${this.uuid}-${index}`, btn, baseIndex + index, 'left');
             this._buttons.push(btn);
         });
     }
