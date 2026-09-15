@@ -22,6 +22,16 @@ export class ClipboardHistoryStore {
 
     start() {
         if (this._pollId) return;
+
+        // Mirrors the common "clear on boot" pattern used by clipboard
+        // managers like Clipboard Indicator: since GNOME Shell restarts
+        // extensions on every login/Shell restart, checking the pref
+        // once here (before the first poll) is enough to wipe stale
+        // history from a previous session.
+        if (this._settings.get_boolean('clipboard-clear-on-startup')) {
+            this.clearAll();
+        }
+
         this._pollId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, POLL_INTERVAL_MS, () => {
             this._poll();
             return GLib.SOURCE_CONTINUE;

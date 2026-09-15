@@ -64,6 +64,19 @@ export default class GlobalMenuPreferences extends ExtensionPreferences {
         desktopNameRow.connect('notify::text', () => settings.set_string('desktop-app-name', desktopNameRow.get_text() || 'Nautilus'));
         mainGroup.add(desktopNameRow);
 
+        const clipboardGroup = new Adw.PreferencesGroup({
+            title: 'Clipboard History',
+            description: 'Controls for the clipboard history panel',
+        });
+        page.add(clipboardGroup);
+
+        const clearOnStartupRow = new Adw.SwitchRow({
+            title: 'Clear History on Login/Reboot',
+            subtitle: 'Wipe non-pinned clipboard entries each time the Shell restarts (e.g. after login). Pinned entries are kept.',
+        });
+        clipboardGroup.add(clearOnStartupRow);
+        settings.bind('clipboard-clear-on-startup', clearOnStartupRow, 'active', Gio.SettingsBindFlags.DEFAULT);
+
         const logoGroup = new Adw.PreferencesGroup({
             title: 'System Menu',
             description: 'A button on the far left of the bar, similar to the Apple menu on macOS',
