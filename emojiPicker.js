@@ -2,6 +2,7 @@ import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
+import { VERTICAL } from './compat.js';
 
 // Curated emoji set, organized by category with search keywords. Not
 // exhaustive (the full Unicode emoji set is thousands of glyphs) but
@@ -1956,7 +1957,7 @@ export class EmojiPicker {
 
         this._actor = new St.BoxLayout({
             style_class: 'globalmenu-emoji-panel popup-menu-content',
-            vertical: true,
+            ...VERTICAL,
             reactive: true,
             visible: false,
         });
@@ -2018,7 +2019,7 @@ export class EmojiPicker {
         });
         this._gridBox = new St.BoxLayout({
             style_class: 'globalmenu-emoji-grid',
-            vertical: true,
+            ...VERTICAL,
             x_expand: true,
         });
         this._scroll.set_child(this._gridBox);

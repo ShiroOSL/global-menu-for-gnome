@@ -20,6 +20,7 @@ import Shell from 'gi://Shell';
 
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
+import { popupAnimation } from './compat.js';
 
 const FILES_RECENT_LIMIT = 8;
 const APPLICATIONS_RECENT_LIMIT = 6;
@@ -224,12 +225,12 @@ class RecentItemsSubmenu extends PopupMenu.PopupBaseMenuItem {
             // Closing the parent System Menu should always take this
             // flyout down with it.
             this._parentCloseId = this._parentMenu.connect('open-state-changed', (_menu, isOpen) => {
-                if (!isOpen && this._flyout) this._flyout.close(false);
+                if (!isOpen && this._flyout) this._flyout.close(popupAnimation(false));
             });
         }
 
         await this._populate();
-        this._flyout.open(true);
+        this._flyout.open(popupAnimation(true));
     }
 
     async _populate() {
@@ -333,7 +334,7 @@ class RecentItemsSubmenu extends PopupMenu.PopupBaseMenuItem {
             Main.notify('Recent Items', 'Could not open item.');
             logError(`[globalmenu] Failed to open recent item ${uri}: ${e}`);
         } finally {
-            this._parentMenu.close(true);
+            this._parentMenu.close(popupAnimation(true));
         }
     }
 
@@ -346,7 +347,7 @@ class RecentItemsSubmenu extends PopupMenu.PopupBaseMenuItem {
             Main.notify('Recent Items', 'Could not launch application.');
             logError(`[globalmenu] Failed to launch recent application: ${e}`);
         } finally {
-            this._parentMenu.close(true);
+            this._parentMenu.close(popupAnimation(true));
         }
     }
 

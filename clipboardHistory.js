@@ -2,6 +2,7 @@ import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
+import { VERTICAL } from './compat.js';
 
 const POLL_INTERVAL_MS = 1000;
 const MAX_ITEMS = 100;
@@ -174,7 +175,7 @@ export class ClipboardPanel {
         // defines, instead of a hardcoded look.
         this._actor = new St.BoxLayout({
             style_class: 'globalmenu-clipboard-panel popup-menu-content',
-            vertical: true,
+            ...VERTICAL,
             reactive: true,
             visible: false,
         });
@@ -215,7 +216,7 @@ export class ClipboardPanel {
             style_class: 'globalmenu-clipboard-scroll',
             overlay_scrollbars: true,
         });
-        this._listBox = new St.BoxLayout({ vertical: true, style_class: 'globalmenu-clipboard-list' });
+        this._listBox = new St.BoxLayout({ ...VERTICAL, style_class: 'globalmenu-clipboard-list' });
         this._scroll.set_child(this._listBox);
         this._actor.add_child(this._scroll);
 
@@ -250,7 +251,7 @@ export class ClipboardPanel {
             can_focus: true,
         });
 
-        let row = new St.BoxLayout({ vertical: false, x_expand: true });
+        let row = new St.BoxLayout({ x_expand: true });
 
         let preview = entry.text.length > MAX_PREVIEW_LEN
             ? entry.text.slice(0, MAX_PREVIEW_LEN) + '…'
