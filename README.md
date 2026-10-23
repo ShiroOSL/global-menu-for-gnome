@@ -1,5 +1,3 @@
-> ⚠️ **Notice:** GNOME 51 support updates are temporarily on hold as I am currently away from my PC. Updates will resume soon!
-
 <p align="center">
   <img src="icon.png" width="96" alt="Global Menu for GNOME icon">
 </p>
@@ -18,7 +16,7 @@
 
 ---
 
-## A note from the developer
+## A note from the Me
 
 **I'm sorry this update came late.** GNOME 51 was already out before this
 extension supported it, and I should have shipped it sooner. Thank you for
