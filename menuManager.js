@@ -1,662 +1,358 @@
-import GObject from 'gi://GObject';
-import St from 'gi://St';
 import Clutter from 'gi://Clutter';
-import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
+import GObject from 'gi://GObject';
+import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
-import * as PanelMenu from "resource:///org/gnome/shell/ui/panelMenu.js";
-import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
-import * as Main from "resource:///org/gnome/shell/ui/main.js";
-import { ClipboardHistoryStore, ClipboardPanel } from './clipboardHistory.js';
-import { EmojiPicker } from './emojiPicker.js';
+import St from 'gi://St';
 
-// Error logging is gated behind the "debug-logging" setting (off by
-// default) so the extension doesn't spam the journal in normal use.
-// MenuManager keeps this in sync with the setting; toggled live.
-let debugLoggingEnabled = false;
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-function logError(message) {
-    if (debugLoggingEnabled) console.error(message);
+import {appMenuItems, builtinMenus} from './menuModel.js';
+import {debug, spawn, spawnLine} from './utils.js';
+
+const HOME = GLib.get_home_dir();
+const UserDir = GLib.UserDirectory;
+
+const specialDir = (type, fallback) => GLib.get_user_special_dir(type) || `${HOME}/${fallback}`;
+
+const LAUNCHERS = {
+    'open-file-manager': () => ['xdg-open', HOME],
+    'new-file-manager-win': () => ['xdg-open', HOME],
+    'go-home': () => ['xdg-open', HOME],
+    'go-recents': () => ['xdg-open', 'recent:///'],
+    'go-documents': () => ['xdg-open', specialDir(UserDir.DIRECTORY_DOCUMENTS, 'Documents')],
+    'go-desktop': () => ['xdg-open', specialDir(UserDir.DIRECTORY_DESKTOP, 'Desktop')],
+    'go-downloads': () => ['xdg-open', specialDir(UserDir.DIRECTORY_DOWNLOAD, 'Downloads')],
+    'open-settings': () => ['gnome-control-center'],
+    'open-system-help': () => ['yelp'],
+    'empty-bin': () => ['gio', 'trash', '--empty'],
+};
+
+const WINDOW_ACTIONS = {
+    close: win => win.delete(global.get_current_time()),
+    minimize: win => win.minimize(),
+    maximize: win => (win.is_maximized() ? win.unmaximize() : win.maximize()),
+};
+
+// evdev key codes
+const KEY = {
+    A: 30, C: 46, H: 35, P: 25, T: 20, V: 47, X: 45, Y: 21, Z: 44,
+    CTRL: 29, SHIFT: 42, ALT: 56,
+    ENTER: 28, DELETE: 111, LEFT: 105, RIGHT: 106, F10: 68, F11: 87,
+};
+
+const SHORTCUTS = {
+    'copy': [KEY.CTRL, KEY.C],
+    'paste': [KEY.CTRL, KEY.V],
+    'cut': [KEY.CTRL, KEY.X],
+    'undo': [KEY.CTRL, KEY.Z],
+    'redo': [KEY.CTRL, KEY.Y],
+    'select-all': [KEY.CTRL, KEY.A],
+    'new-tab': [KEY.CTRL, KEY.T],
+    'print': [KEY.CTRL, KEY.P],
+    'toggle-fullscreen': [KEY.F11],
+    'go-back': [KEY.ALT, KEY.LEFT],
+    'go-forward': [KEY.ALT, KEY.RIGHT],
+    'delete-item': [KEY.DELETE],
+    'virtual-open': [KEY.ENTER],
+    'properties': [KEY.ALT, KEY.ENTER],
+};
+
+const MODIFIER_KEYVALS = [
+    [Clutter.ModifierType.CONTROL_MASK, Clutter.KEY_Control_L],
+    [Clutter.ModifierType.SHIFT_MASK, Clutter.KEY_Shift_L],
+    [Clutter.ModifierType.MOD1_MASK, Clutter.KEY_Alt_L],
+    [Clutter.ModifierType.SUPER_MASK, Clutter.KEY_Super_L],
+];
+
+const IGNORED_APPS = [
+    'gjs', 'org.gnome.gjs', 'gnome-shell', 'mutter',
+    'nautilus', 'org.gnome.nautilus', 'io.github.shiroosl.globalmenu',
+];
+
+const titleCase = id => id.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+function focusedApp(window) {
+    if (!window || window.get_window_type() !== Meta.WindowType.NORMAL)
+        return null;
+
+    const app = Shell.WindowTracker.get_default().get_window_app(window);
+    const wmClass = window.get_wm_class() ?? '';
+    const identity = [app?.get_id(), app?.get_name(), wmClass, window.get_title()].join(' ').toLowerCase();
+
+    if (IGNORED_APPS.some(name => identity.includes(name)) || !(app || wmClass))
+        return null;
+
+    if (app)
+        return {app, name: app.get_name(), desktopId: app.get_id()};
+    return {app: null, name: titleCase(wmClass), desktopId: `${wmClass.toLowerCase()}.desktop`};
 }
 
-// Spawn a command safely using an argv array so no shell parsing/injection
-// can occur, and so arguments with spaces or special characters are passed
-// through intact.
-function spawnCommand(argv) {
+function createDesktopFolder() {
+    const desktop = specialDir(UserDir.DIRECTORY_DESKTOP, 'Desktop');
+    const fileFor = name => Gio.File.new_for_path(GLib.build_filenamev([desktop, name]));
+
+    let name = 'Untitled Folder';
+    for (let n = 2; fileFor(name).query_exists(null); n++)
+        name = `Untitled Folder ${n}`;
+
     try {
-        GLib.spawn_async(
-            null,
-            argv,
-            null,
-            GLib.SpawnFlags.SEARCH_PATH,
-            null
-        );
+        fileFor(name).make_directory(null);
     } catch (e) {
-        logError(`[globalmenu] Failed to spawn '${argv.join(' ')}': ${e}`);
+        debug(`could not create folder: ${e}`);
     }
 }
 
 const TopLevelMenuButton = GObject.registerClass(
-  class TopLevelMenuButton extends PanelMenu.Button {
-    _init(label, children, appInstance = null, clipboardPanel = null, emojiPicker = null) {
-      super._init(0.5, label);
-      this._appInstance = appInstance;
-      this._clipboardPanel = clipboardPanel;
-      this._emojiPicker = emojiPicker;
-      this._timeoutIds = [];
+class TopLevelMenuButton extends PanelMenu.Button {
+    _init(label, children, app = null) {
+        super._init(0.5, label);
+        this._app = app;
+        this._keyboard = null;
+        this._timeouts = new Set();
 
-      let title = new St.Label({
-          text: label,
-          y_align: Clutter.ActorAlign.CENTER,
-          style_class: 'panel-button-label'
-      });
-      this.add_child(title);
-      
-      this._buildSubMenu(children, this.menu);
+        this.add_child(new St.Label({
+            text: label,
+            y_align: Clutter.ActorAlign.CENTER,
+            style_class: 'panel-button-label',
+        }));
 
-      if (this.menu) {
-          this.menu.connectObject('open-state-changed', (_menu, _isOpen) => {
-              this._alignMenuToLeft();
-          }, this);
-      }
+        this._fill(children, this.menu);
+        this.menu.connectObject('open-state-changed', () => this._centerMenu(), this);
     }
 
-    _alignMenuToLeft() {
-        if (!this.menu || !this.menu.actor) return;
-        try {
-            let buttonWidth = Math.round(this.get_width() || 0);
-            let menuWidth = Math.round(this.menu.actor.get_width() || 0);
-            if (buttonWidth <= 0 || menuWidth <= 0) return;
+    _centerMenu() {
+        const buttonWidth = Math.round(this.get_width());
+        const menuWidth = Math.round(this.menu.actor?.get_width() ?? 0);
+        if (buttonWidth <= 0 || menuWidth <= 0)
+            return;
 
-            let offset = Math.round((menuWidth - buttonWidth) / 2);
+        let offset = Math.round((menuWidth - buttonWidth) / 2);
 
-            // Clamp so the menu never gets pushed off-screen near a
-            // monitor edge (matters most on smaller/secondary displays).
-            let [buttonX] = this.get_transformed_position();
-            let monitor = Main.layoutManager.findMonitorForActor(this) ||
-                          Main.layoutManager.primaryMonitor;
-            if (monitor) {
-                let menuLeft = buttonX - offset;
-                let menuRight = menuLeft + menuWidth;
-                if (menuLeft < monitor.x)
-                    offset -= (monitor.x - menuLeft);
-                else if (menuRight > monitor.x + monitor.width)
-                    offset += (menuRight - (monitor.x + monitor.width));
-            }
-
-            this.menu.actor.translation_x = offset;
-        } catch (e) {
-            logError(`[globalmenu] Error aligning menu: ${e}`);
+        const [buttonX] = this.get_transformed_position();
+        const monitor = Main.layoutManager.findMonitorForActor(this) ?? Main.layoutManager.primaryMonitor;
+        if (monitor) {
+            const left = buttonX - offset;
+            const right = left + menuWidth;
+            if (left < monitor.x)
+                offset -= monitor.x - left;
+            else if (right > monitor.x + monitor.width)
+                offset += right - (monitor.x + monitor.width);
         }
+
+        this.menu.actor.translation_x = offset;
     }
 
-    _executeNativeAction(action) {
-        let display = global.display;
-        let window = display.get_focus_window();
-
-        if (action === "close") {
-            if (window) window.delete(global.get_current_time());
-            return true;
-        } else if (action === "minimize") {
-            if (window) window.minimize();
-            return true;
-        } else if (action === "maximize") {
-            if (window) {
-                if (window.is_maximized()) window.unmaximize();
-                else window.maximize();
+    _fill(items, menu) {
+        for (const item of items) {
+            if (item.type === 'separator') {
+                menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+            } else if (item.type === 'section-header') {
+                const heading = new PopupMenu.PopupMenuItem(item.label, {activate: false});
+                heading.setSensitive(false);
+                heading.label.add_style_class_name('popup-subtitle-menu-item');
+                menu.addMenuItem(heading);
+            } else if (item.type === 'submenu') {
+                const sub = new PopupMenu.PopupSubMenuMenuItem(item.label, !!item.icon);
+                if (item.icon)
+                    sub.icon.icon_name = item.icon;
+                this._fill(item.children, sub.menu);
+                menu.addMenuItem(sub);
+            } else {
+                menu.addMenuItem(this._actionItem(item));
             }
-            return true;
-        }
-
-        if (action.startsWith("custom-command:")) {
-            let cmd = action.slice("custom-command:".length);
-            try {
-                let [, argv] = GLib.shell_parse_argv(cmd);
-                spawnCommand(argv);
-            } catch (e) {
-                logError(`[globalmenu] Invalid custom command '${cmd}': ${e}`);
-            }
-            return true;
-        }
-
-        if (action.startsWith("custom-shortcut:")) {
-            let accel = action.slice("custom-shortcut:".length);
-            this._sendAccelerator(accel);
-            return true;
-        }
-
-        if (action.startsWith("activate-window:")) {
-            let winId = action.split(":")[1];
-            if (this._appInstance) {
-                let appWindows = this._appInstance.get_windows();
-                let targetWin = appWindows.find(w => w.get_id().toString() === winId);
-                if (targetWin) {
-                    targetWin.activate(global.get_current_time());
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        if (action === "new-app-window") {
-            if (this._appInstance) {
-                this._appInstance.open_new_window(-1);
-                return true;
-            }
-            return false;
-        }
-
-        if (action.startsWith("app-details:")) {
-            let appId = action.split(":")[1];
-            if (appId) {
-                spawnCommand(['gnome-software', `--details=${appId}`]);
-                return true;
-            }
-        }
-
-        try {
-            if (action === "open-file-manager" || action === "new-file-manager-win" || action === "go-home") {
-                spawnCommand(['xdg-open', GLib.get_home_dir()]);
-                return true;
-            } else if (action === "new-folder") {
-                this._createNewFolder();
-                return true;
-            } else if (action === "open-settings") {
-                spawnCommand(['gnome-control-center']);
-                return true;
-            } else if (action === "empty-bin") {
-                spawnCommand(['gio', 'trash', '--empty']);
-                return true;
-            } else if (action === "open-system-help") {
-                spawnCommand(['yelp']);
-                return true;
-            } else if (action === "go-recents") {
-                spawnCommand(['xdg-open', 'recent:///']);
-                return true;
-            } else if (action === "go-documents") {
-                let path = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOCUMENTS) || `${GLib.get_home_dir()}/Documents`;
-                spawnCommand(['xdg-open', path]);
-                return true;
-            } else if (action === "go-desktop") {
-                let path = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DESKTOP) || `${GLib.get_home_dir()}/Desktop`;
-                spawnCommand(['xdg-open', path]);
-                return true;
-            } else if (action === "go-downloads") {
-                let path = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DOWNLOAD) || `${GLib.get_home_dir()}/Downloads`;
-                spawnCommand(['xdg-open', path]);
-                return true;
-            }
-        } catch (e) {
-            logError(`[globalmenu] Process execution error: ${e}`);
-        }
-
-        try {
-            let seat = Clutter.get_default_backend().get_default_seat();
-            let virtualDevice = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
-            
-            if (virtualDevice) {
-                if (action === "native-open-with") {
-                    let timeUs = GLib.get_monotonic_time();
-                    let shiftScanCode = 42; // Shift key
-                    let f10ScanCode = 68;   // F10 key
-                    let hScanCode = 35;     // 'h' key for mnemonic shortcut
-
-                    // 1. Open context right-click popup menu on selection
-                    virtualDevice.notify_key(timeUs, shiftScanCode, Clutter.KeyState.PRESSED);
-                    virtualDevice.notify_key(timeUs + 10, f10ScanCode, Clutter.KeyState.PRESSED);
-                    virtualDevice.notify_key(timeUs + 20, f10ScanCode, Clutter.KeyState.RELEASED);
-                    virtualDevice.notify_key(timeUs + 30, shiftScanCode, Clutter.KeyState.RELEASED);
-
-                    // 2. This button owns the timeout it creates and is responsible for
-                    // clearing it in destroy().
-                    let timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
-                        let timeNow = GLib.get_monotonic_time();
-                        virtualDevice.notify_key(timeNow, hScanCode, Clutter.KeyState.PRESSED);
-                        virtualDevice.notify_key(timeNow + 10, hScanCode, Clutter.KeyState.RELEASED);
-
-                        this._timeoutIds = this._timeoutIds.filter(id => id !== timeoutId);
-                        return GLib.SOURCE_REMOVE;
-                    });
-
-                    this._timeoutIds.push(timeoutId);
-
-                    return true;
-                }
-
-                let modifierScanCode = 29; // Ctrl
-                let actionScanCode = 0;
-                let useModifier = true;
-                
-                if (action === "copy") actionScanCode = 46;       
-                else if (action === "paste") actionScanCode = 47;  
-                else if (action === "cut") actionScanCode = 45;    
-                else if (action === "undo") actionScanCode = 44;   
-                else if (action === "redo") actionScanCode = 21;   
-                else if (action === "select-all") actionScanCode = 30; 
-                else if (action === "new-tab") actionScanCode = 28;    
-                else if (action === "print") actionScanCode = 25; // Ctrl + P
-                else if (action === "toggle-fullscreen") {
-                    useModifier = false;
-                    actionScanCode = 87; // F11 key
-                }
-                else if (action === "go-back") {
-                    modifierScanCode = 56; 
-                    actionScanCode = 105;  
-                }
-                else if (action === "go-forward") {
-                    modifierScanCode = 56; 
-                    actionScanCode = 106;  
-                }
-                else if (action === "delete-item") {
-                    useModifier = false;
-                    actionScanCode = 111; // Delete key
-                }
-                else if (action === "virtual-open") {
-                    useModifier = false;
-                    actionScanCode = 28;   
-                }
-                else if (action === "properties") {
-                    modifierScanCode = 56; // Alt + Enter (Get Info)
-                    actionScanCode = 28;   
-                }
-
-                if (actionScanCode !== 0) {
-                    let timeUs = GLib.get_monotonic_time();
-                    if (useModifier) {
-                        virtualDevice.notify_key(timeUs, modifierScanCode, Clutter.KeyState.PRESSED);
-                        virtualDevice.notify_key(timeUs + 10, actionScanCode, Clutter.KeyState.PRESSED);
-                        virtualDevice.notify_key(timeUs + 20, actionScanCode, Clutter.KeyState.RELEASED);
-                        virtualDevice.notify_key(timeUs + 30, modifierScanCode, Clutter.KeyState.RELEASED);
-                    } else {
-                        virtualDevice.notify_key(timeUs, actionScanCode, Clutter.KeyState.PRESSED);
-                        virtualDevice.notify_key(timeUs + 10, actionScanCode, Clutter.KeyState.RELEASED);
-                    }
-                    return true;
-                }
-            }
-        } catch (e) {
-            logError(`[globalmenu] Virtual Keyboard error: ${e}`);
-        }
-
-        return false;
-    }
-
-    // Sends an arbitrary GTK-style accelerator string (e.g. "<Control><Alt>t")
-    // as a real key event, for user-defined custom shortcuts.
-    _sendAccelerator(accel) {
-        try {
-            let [success, keyval, mods] = Clutter.accelerator_parse(accel);
-            if (!success) {
-                logError(`[globalmenu] Could not parse shortcut '${accel}'`);
-                return;
-            }
-
-            let seat = Clutter.get_default_backend().get_default_seat();
-            let virtualDevice = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
-            if (!virtualDevice) return;
-
-            let modKeyvals = [];
-            if (mods & Clutter.ModifierType.CONTROL_MASK) modKeyvals.push(Clutter.KEY_Control_L);
-            if (mods & Clutter.ModifierType.SHIFT_MASK) modKeyvals.push(Clutter.KEY_Shift_L);
-            if (mods & Clutter.ModifierType.MOD1_MASK) modKeyvals.push(Clutter.KEY_Alt_L);
-            if (mods & Clutter.ModifierType.SUPER_MASK) modKeyvals.push(Clutter.KEY_Super_L);
-
-            let t = GLib.get_monotonic_time();
-            modKeyvals.forEach(k => {
-                virtualDevice.notify_keyval(t, k, Clutter.KeyState.PRESSED);
-                t += 5;
-            });
-            virtualDevice.notify_keyval(t, keyval, Clutter.KeyState.PRESSED);
-            t += 5;
-            virtualDevice.notify_keyval(t, keyval, Clutter.KeyState.RELEASED);
-            t += 5;
-            modKeyvals.slice().reverse().forEach(k => {
-                virtualDevice.notify_keyval(t, k, Clutter.KeyState.RELEASED);
-                t += 5;
-            });
-        } catch (e) {
-            logError(`[globalmenu] Failed to send accelerator '${accel}': ${e}`);
         }
     }
 
-    _createNewFolder() {
-        try {
-            let desktopPath = GLib.get_user_special_dir(GLib.UserDirectory.DIRECTORY_DESKTOP)
-                || `${GLib.get_home_dir()}/Desktop`;
-            let baseName = "Untitled Folder";
-            let folderName = baseName;
-            let counter = 2;
-            let file = Gio.File.new_for_path(GLib.build_filenamev([desktopPath, folderName]));
+    _actionItem({label, icon, action, enabled}) {
+        const entry = icon
+            ? new PopupMenu.PopupImageMenuItem(label, icon)
+            : new PopupMenu.PopupMenuItem(label);
 
-            while (file.query_exists(null)) {
-                folderName = `${baseName} ${counter}`;
-                file = Gio.File.new_for_path(GLib.build_filenamev([desktopPath, folderName]));
-                counter++;
-            }
+        if (enabled === false)
+            entry.setSensitive(false);
+        else if (action)
+            entry.connectObject('activate', () => this._perform(action), entry);
+        return entry;
+    }
 
-            file.make_directory(null);
-        } catch (e) {
-            logError(`[globalmenu] Failed to create new folder: ${e}`);
+    _perform(action) {
+        const split = action.indexOf(':');
+        const kind = split < 0 ? action : action.slice(0, split);
+        const arg = split < 0 ? '' : action.slice(split + 1);
+
+        switch (kind) {
+        case 'custom-command':
+            spawnLine(arg);
+            return;
+        case 'custom-shortcut':
+            this._sendAccelerator(arg);
+            return;
+        case 'activate-window':
+            this._activateWindow(arg);
+            return;
+        case 'new-app-window':
+            this._app?.open_new_window(-1);
+            return;
+        case 'app-details':
+            if (arg)
+                spawn(['gnome-software', `--details=${arg}`]);
+            return;
+        case 'new-folder':
+            createDesktopFolder();
+            return;
+        case 'native-open-with':
+            this._openWith();
+            return;
+        }
+
+        const windowAction = WINDOW_ACTIONS[action];
+        if (windowAction) {
+            const window = global.display.get_focus_window();
+            if (window)
+                windowAction(window);
+        } else if (LAUNCHERS[action]) {
+            spawn(LAUNCHERS[action]());
+        } else if (SHORTCUTS[action]) {
+            this._tap(SHORTCUTS[action]);
         }
     }
 
-    _buildSubMenu(menuItems, parentMenu) {
-      for (const item of menuItems) {
-        if (item.type === "separator") {
-          parentMenu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        } else if (item.type === "section-header") {
-          let headerItem = new PopupMenu.PopupMenuItem(item.label, { activate: false });
-          headerItem.setSensitive(false);
-          headerItem.label.add_style_class_name('popup-subtitle-menu-item');
-          parentMenu.addMenuItem(headerItem);
-        } else if (item.type === "submenu") {
-          const subMenu = new PopupMenu.PopupSubMenuMenuItem(item.label, !!item.icon);
-          if (item.icon) subMenu.icon.icon_name = item.icon;
-          this._buildSubMenu(item.children, subMenu.menu);
-          parentMenu.addMenuItem(subMenu);
-        } else {
-          const menuItem = item.icon
-            ? new PopupMenu.PopupImageMenuItem(item.label, item.icon)
-            : new PopupMenu.PopupMenuItem(item.label);
-          if (item.enabled === false) {
-            // Unimplemented placeholder item.
-            menuItem.setSensitive(false);
-          } else if (item.action === "show-clipboard") {
-            // connectObject with the item itself as the tracker ties this
-            // signal's lifetime to the item, so it's disconnected
-            // automatically when the item (and thus the menu) is destroyed.
-            menuItem.connectObject("activate", () => {
-              if (this._clipboardPanel) this._clipboardPanel.toggle(this);
-            }, menuItem);
-          } else if (item.action === "emoji-picker") {
-            menuItem.connectObject("activate", () => {
-              if (this._emojiPicker) this._emojiPicker.toggle(this);
-            }, menuItem);
-          } else if (item.action) {
-            menuItem.connectObject("activate", () => {
-              this._executeNativeAction(item.action);
-            }, menuItem);
-          }
-          parentMenu.addMenuItem(menuItem);
+    _activateWindow(id) {
+        const target = this._app?.get_windows().find(win => String(win.get_id()) === id);
+        target?.activate(global.get_current_time());
+    }
+
+    _virtualKeyboard() {
+        this._keyboard ??= Clutter.get_default_backend().get_default_seat()
+            .create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+        return this._keyboard;
+    }
+
+    _tap(keys) {
+        try {
+            const keyboard = this._virtualKeyboard();
+            let time = GLib.get_monotonic_time();
+            for (const key of keys)
+                keyboard.notify_key(time += 10, key, Clutter.KeyState.PRESSED);
+            for (const key of [...keys].reverse())
+                keyboard.notify_key(time += 10, key, Clutter.KeyState.RELEASED);
+        } catch (e) {
+            debug(`virtual keyboard failed: ${e}`);
         }
-      }
+    }
+
+    _sendAccelerator(accelerator) {
+        const [ok, keyval, mods] = Clutter.accelerator_parse(accelerator);
+        if (!ok) {
+            debug(`could not parse shortcut '${accelerator}'`);
+            return;
+        }
+
+        const held = MODIFIER_KEYVALS.filter(([mask]) => mods & mask).map(([, key]) => key);
+        try {
+            const keyboard = this._virtualKeyboard();
+            let time = GLib.get_monotonic_time();
+            for (const key of [...held, keyval])
+                keyboard.notify_keyval(time += 5, key, Clutter.KeyState.PRESSED);
+            for (const key of [keyval, ...held.reverse()])
+                keyboard.notify_keyval(time += 5, key, Clutter.KeyState.RELEASED);
+        } catch (e) {
+            debug(`could not send shortcut '${accelerator}': ${e}`);
+        }
+    }
+
+    _openWith() {
+        this._tap([KEY.SHIFT, KEY.F10]);
+        this._delay(150, () => this._tap([KEY.H]));
+    }
+
+    _delay(ms, callback) {
+        const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => {
+            this._timeouts.delete(id);
+            callback();
+            return GLib.SOURCE_REMOVE;
+        });
+        this._timeouts.add(id);
     }
 
     destroy() {
-        if (this._timeoutIds && this._timeoutIds.length > 0) {
-            this._timeoutIds.forEach(id => GLib.source_remove(id));
-            this._timeoutIds = [];
-        }
+        this._timeouts.forEach(id => GLib.source_remove(id));
+        this._timeouts.clear();
+        this._keyboard = null;
         super.destroy();
     }
-  }
-);
+});
 
 export class MenuManager {
     constructor(uuid, settings) {
         this.uuid = uuid;
         this._settings = settings;
         this._buttons = [];
-        this._blacklist = ['gjs', 'org.gnome.gjs', 'gnome-shell', 'mutter', 'nautilus', 'org.gnome.nautilus', 'io.github.shiroosl.globalmenu'];
-
-        debugLoggingEnabled = settings.get_boolean('debug-logging');
-        this._debugLoggingChangedId = settings.connect('changed::debug-logging', () => {
-            debugLoggingEnabled = settings.get_boolean('debug-logging');
-        });
-
-        this._clipboardStore = new ClipboardHistoryStore(settings);
-        this._clipboardStore.start();
-        this._clipboardPanel = new ClipboardPanel(this._clipboardStore);
-        this._emojiPicker = new EmojiPicker();
     }
 
     updateMenuForWindow(window) {
-        let appName = this._settings.get_string('desktop-app-name') || 'Nautilus';
-        let isAppFocused = false;
-        let desktopId = "";
-        let detectedApp = null;
+        const focus = focusedApp(window);
+        const desktopName = this._settings.get_string('desktop-app-name') || 'Nautilus';
+        const enabled = key => this._settings.get_boolean(key);
 
-        if (window) {
-            let windowType = window.get_window_type();
-
-            if (windowType === 0) {
-                let tracker = Shell.WindowTracker.get_default();
-                detectedApp = tracker.get_window_app(window);
-
-                let checkId = detectedApp ? (detectedApp.get_id() || "") : "";
-                let checkName = detectedApp ? (detectedApp.get_name() || "") : "";
-                let wmClass = window.get_wm_class() || "";
-                let title = window.get_title() || "";
-
-                let combinedIdentifiers = `${checkId} ${checkName} ${wmClass} ${title}`.toLowerCase();
-
-                let isBlacklisted = this._blacklist.some(item =>
-                    combinedIdentifiers.includes(item.toLowerCase())
-                );
-
-                if (!isBlacklisted && (detectedApp || wmClass)) {
-                    if (detectedApp) {
-                        appName = detectedApp.get_name();
-                        desktopId = detectedApp.get_id();
-                        isAppFocused = true;
-                    } else if (wmClass) {
-                        appName = wmClass.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-                        desktopId = wmClass.toLowerCase() + ".desktop";
-                        isAppFocused = true;
-                    }
-                } else {
-                    detectedApp = null;
-                }
-            }
+        const menus = [];
+        if (enabled('menu-app-enabled')) {
+            menus.push({
+                label: focus?.name ?? desktopName,
+                children: appMenuItems(focus, desktopName),
+            });
         }
-
-        let desktopAppName = this._settings.get_string('desktop-app-name') || 'Nautilus';
-
-        let firstMenuChildren = [];
-        if (isAppFocused) {
-            if (detectedApp) {
-                let openWindows = detectedApp.get_windows();
-                if (openWindows.length > 0) {
-                    firstMenuChildren.push({ type: "section-header", label: "Open Windows" });
-                    openWindows.forEach(win => {
-                        firstMenuChildren.push({
-                            label: win.get_title() || appName,
-                            action: `activate-window:${win.get_id()}`,
-                            icon: "window-symbolic"
-                        });
-                    });
-                    firstMenuChildren.push({ type: "separator" });
-                }
-            }
-            firstMenuChildren.push(
-                { label: "New Window", action: "new-app-window", icon: "window-new-symbolic" },
-                { type: "separator" },
-                { label: "App Details", action: `app-details:${desktopId}`, icon: "dialog-information-symbolic" },
-                { type: "separator" },
-                { label: `Quit ${appName}`, action: "close", icon: "application-exit-symbolic" }
-            );
-        } else {
-            firstMenuChildren = [
-                { label: `About ${desktopAppName}`, enabled: false, icon: "dialog-information-symbolic" },
-                { type: "separator" },
-                { label: `Open ${desktopAppName}`, action: "open-file-manager", icon: "folder-symbolic" },
-                { label: "Settings", action: "open-settings", icon: "preferences-system-symbolic" },
-                { type: "separator" },
-                { label: "Empty Bin...", action: "empty-bin", icon: "user-trash-full-symbolic" }
-            ];
+        for (const [key, menu] of builtinMenus(desktopName)) {
+            if (enabled(key))
+                menus.push(menu);
         }
-
-        const fileMenu = {
-            type: "submenu",
-            label: "File",
-            icon: "folder-symbolic",
-            children: [
-                { label: `New ${desktopAppName} Window`, action: "new-file-manager-win", icon: "window-new-symbolic" },
-                { label: "New Folder", action: "new-folder", icon: "folder-new-symbolic" },
-                { label: "New Tab", action: "new-tab", icon: "tab-new-symbolic" },
-                { label: "Open", action: "virtual-open", icon: "document-open-symbolic" },
-                { label: "Open With", action: "native-open-with", icon: "document-open-symbolic" },
-                { label: "Print", action: "print", icon: "document-print-symbolic" },
-                { type: "separator" },
-                { label: "Get Info", action: "properties", icon: "dialog-information-symbolic" },
-                { label: "Compress", enabled: false, icon: "package-x-generic-symbolic" },
-                { label: "Duplicate", enabled: false, icon: "edit-copy-symbolic" },
-                { type: "separator" },
-                { label: "Move to Trash", action: "delete-item", icon: "user-trash-symbolic" },
-                { type: "separator" },
-                { label: "Close Window", action: "close", icon: "window-close-symbolic" }
-            ]
-        };
-
-        const editMenu = {
-            type: "submenu",
-            label: "Edit",
-            icon: "document-edit-symbolic",
-            children: [
-                { label: "Undo", action: "undo", icon: "edit-undo-symbolic" },
-                { label: "Redo", action: "redo", icon: "edit-redo-symbolic" },
-                { type: "separator" },
-                { label: "Cut", action: "cut", icon: "edit-cut-symbolic" },
-                { label: "Copy", action: "copy", icon: "edit-copy-symbolic" },
-                { label: "Paste", action: "paste", icon: "edit-paste-symbolic" },
-                { label: "Delete", action: "delete-item", icon: "edit-delete-symbolic" },
-                { label: "Select All", action: "select-all", icon: "edit-select-all-symbolic" },
-                { type: "separator" },
-                { label: "Show Clipboard", action: "show-clipboard", icon: "edit-paste-symbolic" },
-                { type: "separator" },
-                { label: "Emoji & Symbols", action: "emoji-picker", icon: "face-smile-symbolic" }
-            ]
-        };
-
-        const viewMenu = {
-            type: "submenu",
-            label: "View",
-            icon: "view-grid-symbolic",
-            children: [
-                { label: "as Icons", enabled: false, icon: "view-grid-symbolic" },
-                { label: "as List", enabled: false, icon: "view-list-symbolic" },
-                { type: "separator" },
-                { label: "Enter Full Screen", action: "toggle-fullscreen", icon: "view-fullscreen-symbolic" }
-            ]
-        };
-
-        const goMenu = {
-            type: "submenu",
-            label: "Go",
-            icon: "compass-symbolic",
-            children: [
-                { label: "Back", action: "go-back", icon: "go-previous-symbolic" },
-                { label: "Forward", action: "go-forward", icon: "go-next-symbolic" },
-                { type: "separator" },
-                { label: "Recents", action: "go-recents", icon: "document-open-recent-symbolic" },
-                { label: "Documents", action: "go-documents", icon: "folder-documents-symbolic" },
-                { label: "Desktop", action: "go-desktop", icon: "user-desktop-symbolic" },
-                { label: "Downloads", action: "go-downloads", icon: "folder-download-symbolic" },
-                { label: "Home", action: "go-home", icon: "go-home-symbolic" }
-            ]
-        };
-
-        const windowMenu = {
-            type: "submenu",
-            label: "Window",
-            icon: "preferences-system-windows-symbolic",
-            children: [
-                { label: "Minimize", action: "minimize", icon: "window-minimize-symbolic" },
-                { label: "Maximize", action: "maximize", icon: "window-maximize-symbolic" },
-                { type: "separator" },
-                { label: "Close", action: "close", icon: "window-close-symbolic" }
-            ]
-        };
-
-        const helpMenu = {
-            type: "submenu",
-            label: "Help",
-            icon: "help-about-symbolic",
-            children: [
-                { label: "GNOME Help", action: "open-system-help", icon: "help-browser-symbolic" }
-            ]
-        };
-
-        let menuData = [];
-
-        if (this._settings.get_boolean('menu-app-enabled')) {
-            menuData.push({ type: "submenu", label: appName, children: firstMenuChildren });
-        }
-
-        if (this._settings.get_boolean('menu-file-enabled')) menuData.push(fileMenu);
-        if (this._settings.get_boolean('menu-edit-enabled')) menuData.push(editMenu);
-        if (this._settings.get_boolean('menu-view-enabled')) menuData.push(viewMenu);
-        if (this._settings.get_boolean('menu-go-enabled')) menuData.push(goMenu);
-        if (this._settings.get_boolean('menu-window-enabled')) menuData.push(windowMenu);
-        if (this._settings.get_boolean('menu-help-enabled')) menuData.push(helpMenu);
-
-        menuData.push(...this._buildCustomMenus());
+        menus.push(...this._customMenus());
 
         this.clear();
 
-        let hideOverview = this._settings.get_boolean('hide-overview-button');
-        let showLogoMenu = this._settings.get_boolean('show-logo-menu');
-        let baseIndex = (hideOverview ? 0 : 1) + (showLogoMenu ? 1 : 0);
-
-        menuData.forEach((item, index) => {
-            let btn = new TopLevelMenuButton(item.label, item.children, detectedApp, this._clipboardPanel, this._emojiPicker);
-            Main.panel.addToStatusArea(`${this.uuid}-${index}`, btn, baseIndex + index, 'left');
-            this._buttons.push(btn);
+        const firstSlot = (enabled('hide-overview-button') ? 0 : 1) + (enabled('show-logo-menu') ? 1 : 0);
+        menus.forEach((menu, i) => {
+            const button = new TopLevelMenuButton(menu.label, menu.children, focus?.app ?? null);
+            Main.panel.addToStatusArea(`${this.uuid}-${i}`, button, firstSlot + i, 'left');
+            this._buttons.push(button);
         });
     }
 
-    _buildCustomMenus() {
-        let raw = this._settings.get_string('custom-menus') || '[]';
-        let sections = [];
+    _customMenus() {
+        let sections;
         try {
-            sections = JSON.parse(raw);
-        } catch (e) {
+            sections = JSON.parse(this._settings.get_string('custom-menus') || '[]');
+        } catch (_e) {
             sections = [];
         }
 
         return sections
             .filter(section => section && section.enabled !== false)
             .map(section => {
-                let items = Array.isArray(section.items) ? section.items : [];
-                let children = items
-                    .filter(entry => entry && entry.value)
+                const children = (Array.isArray(section.items) ? section.items : [])
+                    .filter(entry => entry?.value)
                     .map(entry => ({
                         label: entry.label || '(untitled)',
-                        action: entry.kind === 'shortcut'
-                            ? `custom-shortcut:${entry.value}`
-                            : `custom-command:${entry.value}`,
+                        action: `${entry.kind === 'shortcut' ? 'custom-shortcut' : 'custom-command'}:${entry.value}`,
                     }));
 
-                if (children.length === 0) {
-                    children.push({ label: 'No items configured', enabled: false });
-                }
+                if (children.length === 0)
+                    children.push({label: 'No items configured', enabled: false});
 
-                return { type: "submenu", label: section.label || 'Custom', children };
+                return {label: section.label || 'Custom', children};
             });
     }
 
     clear() {
-        this._buttons.forEach(btn => btn.destroy());
+        this._buttons.forEach(button => button.destroy());
         this._buttons = [];
     }
 
     destroy() {
-        if (this._settings && this._debugLoggingChangedId) {
-            this._settings.disconnect(this._debugLoggingChangedId);
-            this._debugLoggingChangedId = null;
-        }
-        if (this._clipboardPanel) {
-            this._clipboardPanel.destroy();
-            this._clipboardPanel = null;
-        }
-        if (this._clipboardStore) {
-            this._clipboardStore.destroy();
-            this._clipboardStore = null;
-        }
-        if (this._emojiPicker) {
-            this._emojiPicker.destroy();
-            this._emojiPicker = null;
-        }
         this.clear();
     }
 }

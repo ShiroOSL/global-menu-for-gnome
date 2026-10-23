@@ -1,32 +1,24 @@
 #!/bin/bash
+set -e
 
-EXTENSION_UUID="globalmenu@ShiroOSL.github.io"
-EXTENSION_DIR="$HOME/.local/share/gnome-shell/extensions/$EXTENSION_UUID"
-SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
+UUID="globalmenu@ShiroOSL.github.io"
+TARGET="$HOME/.local/share/gnome-shell/extensions/$UUID"
+SOURCE="$(cd "$(dirname "$0")" && pwd)"
 
-echo "--------------------------------------------------"
-echo "🚀 Starting installation of Global Menu for GNOME (V4)"
-echo "--------------------------------------------------"
+rm -rf "$TARGET"
+mkdir -p "$TARGET"
 
-echo "🧹 Clearing old structures..."
-rm -rf "$EXTENSION_DIR"
-mkdir -p "$EXTENSION_DIR"
+cp "$SOURCE"/*.js "$SOURCE/metadata.json" "$SOURCE/stylesheet.css" "$TARGET/"
+cp "$SOURCE/uninstall.sh" "$SOURCE/logs.sh" "$TARGET/"
+cp -r "$SOURCE/schemas" "$SOURCE/icons" "$TARGET/"
 
-echo "📄 Copying extension files..."
-# Copy every .js file and the schemas/ directory automatically, so newly
-# added source files are never silently left out of the installed copy.
-cp -v "$SOURCE_DIR"/*.js "$EXTENSION_DIR/"
-cp -v "$SOURCE_DIR/metadata.json" "$EXTENSION_DIR/"
-cp -v "$SOURCE_DIR/stylesheet.css" "$EXTENSION_DIR/" 2>/dev/null
-cp -rv "$SOURCE_DIR/schemas" "$EXTENSION_DIR/"
-cp -rv "$SOURCE_DIR/icons" "$EXTENSION_DIR/"
-cp -v "$SOURCE_DIR/uninstall.sh" "$EXTENSION_DIR/" 2>/dev/null
-cp -v "$SOURCE_DIR/logs.sh" "$EXTENSION_DIR/" 2>/dev/null
+glib-compile-schemas "$TARGET/schemas/"
 
-echo "⚙️ Compiling GSettings schemas..."
-glib-compile-schemas "$EXTENSION_DIR/schemas/"
+# the clipboard feature was removed, so drop the history it left in dconf
+if command -v dconf >/dev/null 2>&1; then
+    dconf reset /org/gnome/shell/extensions/globalmenu/clipboard-history || true
+    dconf reset /org/gnome/shell/extensions/globalmenu/clipboard-clear-on-startup || true
+fi
 
-echo "--------------------------------------------------"
-echo "✅ Installation complete!"
-echo "💡 Restart your desktop session (Logout/Login) to clear cache."
-echo "--------------------------------------------------"
+echo "Installed to $TARGET"
+echo "Log out and back in to load the new version."

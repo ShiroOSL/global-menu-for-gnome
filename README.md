@@ -18,6 +18,21 @@
 
 ---
 
+## A note from the developer
+
+**I'm sorry this update came late.** GNOME 51 was already out before this
+extension supported it, and I should have shipped it sooner. Thank you for
+your patience.
+
+**What changed in this update**
+
+- **Full GNOME 51 support.** The extension now supports GNOME 47 to 51. GNOME 45 and 46 are no longer supported.
+- **Removed the Clipboard and Emoji picker features.** I'm planning a separate extension for clipboard history and emoji that will do this better than what I built here. It will be compatible with Global Menu for GNOME, so the two will work well together.
+- The "About This System" window and the Recent Items menu were rebuilt, with new PC and laptop icons.
+- Fixed the **New Tab** menu item, which was sending the wrong shortcut.
+
+---
+
 ## What is this?
 
 Global Menu for GNOME brings a streamlined, macOS-inspired layout to your
@@ -33,6 +48,7 @@ across app headerbars.
 - Multiple independent custom top-level menus, each with shell-command or keyboard-shortcut items
 - Bundled distro/Apple icon picker for the System Menu button
 - Optional hiding of the Activities button
+- Works on GNOME 47 to 51
 
 ## 🚀 Installation
 

@@ -1,152 +1,123 @@
-import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
-import * as Main from "resource:///org/gnome/shell/ui/main.js";
-import { MenuManager } from './menuManager.js';
-import { SystemMenuButton } from './systemMenu.js';
+import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-// Note: systemInfoPanel.js is intentionally not imported as an ES module.
-// It's a standalone GTK4/Adw script spawned at runtime via
-// `gjs -m systemInfoPanel.js` (see the GLib.build_filenamev(..., 'systemInfoPanel.js')
-// call in systemMenu.js). It runs in its own process, separate from the
-// Shell's extension context, so it can't be imported here directly.
+import {MenuManager} from './menuManager.js';
+import {SystemMenuButton} from './systemMenu.js';
+import {setDebug} from './utils.js';
+
+// systemInfoPanel.js is a GTK4 script that systemMenu.js starts as its own
+// `gjs -m` process. Never import it here.
+
+const ACTIVITIES_KEYS = ['hide-overview-button', 'keep-activities-left'];
+const LOGO_KEYS = [
+    'logo-icon-name', 'logo-custom-icon-path', 'logo-distro-icon',
+    'logo-distro-icon-symbolic', 'logo-icon-size',
+];
 
 export default class GlobalMenuExtension extends Extension {
-    constructor(metadata) {
-        super(metadata);
-        this._menuManager = null;
-        this._settings = null;
-        this._settingsChangedId = null;
+    enable() {
+        this._settings = this.getSettings();
+        this._menuManager = new MenuManager(this.metadata.uuid, this._settings);
         this._logoButton = null;
         this._overviewHidden = false;
-    }
 
-    enable() {
-        console.log(`[globalmenu@ShiroOSL.github.io] Enabling extension.`);
+        setDebug(this._settings.get_boolean('debug-logging'));
 
-        this._settings = this.getSettings();
-
-        const uuid = this.metadata.uuid || 'globalmenu@ShiroOSL.github.io';
-
-        this._menuManager = new MenuManager(uuid, this._settings);
-
-        const ICON_ONLY_KEYS = ['logo-icon-name', 'logo-custom-icon-path', 'logo-distro-icon', 'logo-distro-icon-symbolic', 'logo-icon-size'];
-
-        this._settingsChangedId = this._settings.connect('changed', (_settings, key) => {
-            if (key === 'hide-overview-button' || key === 'keep-activities-left') {
-                this._syncOverviewButton();
-                this._syncLogoPosition();
-                this._syncMenuVisibility();
-            } else if (key === 'show-logo-menu') {
-                this._syncLogoButton();
-                this._syncMenuVisibility();
-            } else if (!ICON_ONLY_KEYS.includes(key)) {
-                // Any other key (menu toggles, custom menus, indicator,
-                // logo-menu item toggles) affects what the bar should show
-                // right now. Icon-only keys are handled internally by
-                // SystemMenuButton itself.
-                this._syncMenuVisibility();
-            }
-        });
-
-        global.display.connectObject('notify::focus-window', () => {
-            this._syncMenuVisibility();
-        }, this);
+        this._settings.connectObject('changed', (_settings, key) => this._onSettingChanged(key), this);
+        global.display.connectObject('notify::focus-window', () => this._syncMenus(), this);
 
         this._syncOverviewButton();
         this._syncLogoButton();
-        this._syncMenuVisibility();
+        this._syncMenus();
     }
 
-    _getLogoPosition() {
-        let hideOverview = this._settings.get_boolean('hide-overview-button');
-        let keepLeft = this._settings.get_boolean('keep-activities-left');
-        return (!hideOverview && keepLeft) ? 1 : 0;
+    disable() {
+        global.display.disconnectObject(this);
+        this._settings.disconnectObject(this);
+
+        this._menuManager.destroy();
+        this._menuManager = null;
+
+        this._logoButton?.destroy();
+        this._logoButton = null;
+
+        const activities = Main.panel.statusArea['activities'];
+        if (activities) {
+            if (this._overviewHidden)
+                activities.show();
+            if (activities.container?.get_parent() === Main.panel._leftBox)
+                Main.panel._leftBox.set_child_at_index(activities.container, 0);
+        }
+
+        this._overviewHidden = false;
+        this._settings = null;
     }
 
-    _syncLogoPosition() {
-        if (!this._logoButton || !this._logoButton.container) return;
-        let targetPos = this._getLogoPosition();
-        if (this._logoButton.container.get_parent() === Main.panel._leftBox) {
-            Main.panel._leftBox.set_child_at_index(this._logoButton.container, targetPos);
+    _onSettingChanged(key) {
+        if (key === 'debug-logging') {
+            setDebug(this._settings.get_boolean(key));
+        } else if (ACTIVITIES_KEYS.includes(key)) {
+            this._syncOverviewButton();
+            this._syncLogoPosition();
+            this._syncMenus();
+        } else if (key === 'show-logo-menu') {
+            this._syncLogoButton();
+            this._syncMenus();
+        } else if (!LOGO_KEYS.includes(key)) {
+            this._syncMenus();
         }
     }
 
-    _syncLogoButton() {
-        let shouldShow = this._settings.get_boolean('show-logo-menu');
+    _logoIndex() {
+        const activitiesVisible = !this._settings.get_boolean('hide-overview-button');
+        return activitiesVisible && this._settings.get_boolean('keep-activities-left') ? 1 : 0;
+    }
 
-        if (shouldShow && !this._logoButton) {
+    _syncLogoPosition() {
+        const container = this._logoButton?.container;
+        if (container?.get_parent() === Main.panel._leftBox)
+            Main.panel._leftBox.set_child_at_index(container, this._logoIndex());
+    }
+
+    _syncLogoButton() {
+        const wanted = this._settings.get_boolean('show-logo-menu');
+
+        if (wanted && !this._logoButton) {
             this._logoButton = new SystemMenuButton(this._settings, this.path);
-            let pos = this._getLogoPosition();
-            Main.panel.addToStatusArea('globalmenu-logo', this._logoButton, pos, 'left');
-        } else if (!shouldShow && this._logoButton) {
+            Main.panel.addToStatusArea('globalmenu-logo', this._logoButton, this._logoIndex(), 'left');
+        } else if (!wanted && this._logoButton) {
             this._logoButton.destroy();
             this._logoButton = null;
-        } else if (shouldShow && this._logoButton) {
+        } else if (wanted) {
             this._syncLogoPosition();
         }
     }
 
     _syncOverviewButton() {
-        let activities = Main.panel.statusArea['activities'];
-        if (!activities) return;
+        const activities = Main.panel.statusArea['activities'];
+        if (!activities)
+            return;
 
-        let shouldHide = this._settings.get_boolean('hide-overview-button');
-        if (shouldHide && !this._overviewHidden) {
+        const hide = this._settings.get_boolean('hide-overview-button');
+        if (hide && !this._overviewHidden) {
             activities.hide();
             this._overviewHidden = true;
-        } else if (!shouldHide && this._overviewHidden) {
+        } else if (!hide && this._overviewHidden) {
             activities.show();
             this._overviewHidden = false;
         }
 
-        if (!shouldHide && activities.container && activities.container.get_parent() === Main.panel._leftBox) {
-            let keepLeft = this._settings.get_boolean('keep-activities-left');
-            let targetPos = keepLeft ? 0 : (this._settings.get_boolean('show-logo-menu') ? 1 : 0);
-            Main.panel._leftBox.set_child_at_index(activities.container, targetPos);
+        if (!hide && activities.container?.get_parent() === Main.panel._leftBox) {
+            const keepLeft = this._settings.get_boolean('keep-activities-left');
+            const logoBefore = this._settings.get_boolean('show-logo-menu');
+            Main.panel._leftBox.set_child_at_index(activities.container, keepLeft || !logoBefore ? 0 : 1);
         }
     }
 
-    _syncMenuVisibility() {
-        if (!this._menuManager) return;
-
-        if (this._settings.get_boolean('show-indicator')) {
-            let activeWindow = global.display.get_focus_window();
-            this._menuManager.updateMenuForWindow(activeWindow);
-        } else {
+    _syncMenus() {
+        if (!this._settings.get_boolean('show-indicator'))
             this._menuManager.clear();
-        }
-    }
-
-    disable() {
-        console.log(`[globalmenu@ShiroOSL.github.io] Disabling extension.`);
-
-        global.display.disconnectObject(this);
-
-        if (this._settings && this._settingsChangedId) {
-            this._settings.disconnect(this._settingsChangedId);
-            this._settingsChangedId = null;
-        }
-
-        if (this._menuManager) {
-            this._menuManager.destroy();
-            this._menuManager = null;
-        }
-
-        if (this._logoButton) {
-            this._logoButton.destroy();
-            this._logoButton = null;
-        }
-
-        let activities = Main.panel.statusArea['activities'];
-        if (activities) {
-            if (this._overviewHidden) {
-                activities.show();
-                this._overviewHidden = false;
-            }
-            if (activities.container && activities.container.get_parent() === Main.panel._leftBox) {
-                Main.panel._leftBox.set_child_at_index(activities.container, 0);
-            }
-        }
-
-        this._settings = null;
+        else
+            this._menuManager.updateMenuForWindow(global.display.get_focus_window());
     }
 }

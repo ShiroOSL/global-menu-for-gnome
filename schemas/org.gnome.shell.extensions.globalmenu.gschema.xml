@@ -79,18 +79,6 @@
       <description>Used for the App menu label and File menu items (e.g. "About X", "Open X", "New X Window") when no other app is focused.</description>
     </key>
 
-    <key name="clipboard-history" type="s">
-      <default>"[]"</default>
-      <summary>JSON clipboard history</summary>
-      <description>Each entry: {text, pinned, time}. Capped at 100 items (pinned items exempt from trimming).</description>
-    </key>
-
-    <key name="clipboard-clear-on-startup" type="b">
-      <default>true</default>
-      <summary>Clear unpinned clipboard history on login/reboot</summary>
-      <description>When enabled, non-pinned clipboard history entries are wiped each time the extension starts (e.g. after login or a Shell restart). Pinned entries are kept.</description>
-    </key>
-
     <key name="debug-logging" type="b">
       <default>false</default>
       <summary>Enable verbose error logging to the system journal</summary>

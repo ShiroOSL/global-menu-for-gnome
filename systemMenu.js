@@ -1,241 +1,197 @@
-import GObject from 'gi://GObject';
-import St from 'gi://St';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import GObject from 'gi://GObject';
 import Shell from 'gi://Shell';
-import * as PanelMenu from "resource:///org/gnome/shell/ui/panelMenu.js";
-import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
-import * as Main from "resource:///org/gnome/shell/ui/main.js";
+import St from 'gi://St';
+
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as SystemActions from 'resource:///org/gnome/shell/misc/systemActions.js';
-import { RecentItemsSubmenu, setDebugLogging } from './recentItemsSubmenu.js';
+import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-// Kept in sync with the "debug-logging" setting by SystemMenuButton, so
-// this module's own errors are gated the same way as recentItemsSubmenu.js.
-let debugLoggingEnabled = false;
+import {RecentItemsRow} from './recentItems.js';
+import {COMMAND_PRESETS, debug, spawnLine} from './utils.js';
 
-function logError(message) {
-    if (debugLoggingEnabled) console.error(message);
-}
+const ICON_KEYS = [
+    'logo-icon-name', 'logo-custom-icon-path', 'logo-distro-icon',
+    'logo-distro-icon-symbolic', 'logo-icon-size',
+];
 
-function spawnCommandLine(commandLine) {
-    try {
-        let [, argv] = GLib.shell_parse_argv(commandLine);
-        GLib.spawn_async(null, argv, null, GLib.SpawnFlags.SEARCH_PATH, null);
-    } catch (e) {
-        logError(`[globalmenu] Failed to launch '${commandLine}': ${e}`);
-    }
-}
+const MENU_KEYS = [
+    'hide-overview-button', 'show-app-grid', 'show-software-center', 'show-system-monitor',
+    'show-terminal', 'show-extensions-app', 'show-force-quit', 'show-power-options',
+    'show-lock-screen', 'show-log-out', 'system-menu-custom-items',
+];
 
-// Returns the first command (configured choice first, then fallbacks) whose
-// executable actually exists on this system, or null if none do.
-function findAvailableCommand(preferred, fallbacks) {
-    let candidates = [preferred, ...fallbacks].filter(Boolean);
-    for (let cmd of candidates) {
+const TOOLS = [
+    {
+        flag: 'show-software-center', label: 'Software Center', icon: 'software-store-symbolic',
+        commandKey: 'software-center-command', presets: COMMAND_PRESETS.softwareCenter,
+    },
+    {
+        flag: 'show-system-monitor', label: 'System Monitor', icon: 'utilities-system-monitor-symbolic',
+        commandKey: 'system-monitor-command', presets: COMMAND_PRESETS.systemMonitor,
+    },
+    {
+        flag: 'show-terminal', label: 'Terminal', icon: 'utilities-terminal-symbolic',
+        commandKey: 'terminal-command', presets: COMMAND_PRESETS.terminal,
+    },
+];
+
+const EXTENSION_APP_IDS = ['org.gnome.Extensions.desktop', 'com.mattjakeman.ExtensionManager.desktop'];
+
+function firstInstalled(commands) {
+    return commands.filter(Boolean).find(command => {
         try {
-            let [, argv] = GLib.shell_parse_argv(cmd);
-            if (argv && argv[0] && GLib.find_program_in_path(argv[0]))
-                return cmd;
-        } catch (e) {
-            // Malformed command string; skip it.
+            const [, argv] = GLib.shell_parse_argv(command);
+            return Boolean(argv[0] && GLib.find_program_in_path(argv[0]));
+        } catch (_e) {
+            return false;
         }
-    }
-    return null;
+    }) ?? null;
 }
-
-const TERMINAL_FALLBACKS = ['ptyxis', 'gnome-terminal', 'kgx', 'konsole', 'kitty', 'alacritty', 'tilix', 'terminator', 'xterm'];
-const SOFTWARE_CENTER_FALLBACKS = ['gnome-software', 'plasma-discover', 'pamac-manager', 'snap-store'];
-const SYSTEM_MONITOR_FALLBACKS = ['gnome-system-monitor', 'resources', 'ksysguard', 'xfce4-taskmanager'];
 
 export const SystemMenuButton = GObject.registerClass(
-  class SystemMenuButton extends PanelMenu.Button {
+class SystemMenuButton extends PanelMenu.Button {
     _init(settings, extensionPath) {
         super._init(0.5, 'System Menu');
 
         this._settings = settings;
         this._extensionPath = extensionPath;
         this._systemActions = SystemActions.getDefault();
-        // Manages the Recent Items side-flyout so it participates in
-        // GNOME's normal click-away/escape-to-close popup handling.
-        this._menuManager = new PopupMenu.PopupMenuManager(this);
+        this._flyoutManager = new PopupMenu.PopupMenuManager(this);
 
-        this._icon = new St.Icon({
-            style_class: 'globalmenu-logo-icon system-status-icon',
-        });
+        this._icon = new St.Icon({style_class: 'globalmenu-logo-icon system-status-icon'});
         this.add_child(this._icon);
-
-        debugLoggingEnabled = this._settings.get_boolean('debug-logging');
-        setDebugLogging(debugLoggingEnabled);
 
         this._syncIcon();
         this._rebuildMenu();
 
         this._settings.connectObject('changed', (_settings, key) => {
-            if (key === 'debug-logging') {
-                debugLoggingEnabled = this._settings.get_boolean('debug-logging');
-                setDebugLogging(debugLoggingEnabled);
-            } else if (['logo-icon-name', 'logo-custom-icon-path', 'logo-distro-icon',
-                 'logo-distro-icon-symbolic', 'logo-icon-size'].includes(key)) {
+            if (ICON_KEYS.includes(key))
                 this._syncIcon();
-            } else if (['hide-overview-button', 'show-app-grid', 'show-software-center',
-                        'show-system-monitor', 'show-terminal', 'show-extensions-app',
-                        'show-force-quit', 'show-power-options', 'show-lock-screen',
-                        'show-log-out', 'system-menu-custom-items'].includes(key)) {
+            else if (MENU_KEYS.includes(key))
                 this._rebuildMenu();
-            }
         }, this);
+    }
 
-        this.connect('destroy', this._onDestroy.bind(this));
+    _bundledIcon(name) {
+        const symbolic = this._settings.get_boolean('logo-distro-icon-symbolic');
+        for (const variant of symbolic ? ['symbolic', 'color'] : ['color', 'symbolic']) {
+            const path = GLib.build_filenamev([this._extensionPath, 'icons', `distro-${name}-${variant}.svg`]);
+            if (GLib.file_test(path, GLib.FileTest.EXISTS))
+                return path;
+        }
+        return null;
     }
 
     _syncIcon() {
-        let size = this._settings.get_int('logo-icon-size');
-        if (size > 0) this._icon.icon_size = size;
+        const size = this._settings.get_int('logo-icon-size');
+        if (size > 0)
+            this._icon.icon_size = size;
 
-        let customPath = this._settings.get_string('logo-custom-icon-path');
-        if (customPath) {
-            let file = Gio.File.new_for_path(customPath);
-            if (file.query_exists(null)) {
-                this._icon.gicon = Gio.icon_new_for_string(customPath);
-                return;
-            }
-        }
+        const custom = this._settings.get_string('logo-custom-icon-path');
+        const distro = this._settings.get_string('logo-distro-icon');
+        const path = custom && GLib.file_test(custom, GLib.FileTest.EXISTS)
+            ? custom
+            : distro && this._bundledIcon(distro);
 
-        let distroIcon = this._settings.get_string('logo-distro-icon');
-        if (distroIcon) {
-            let variant = this._settings.get_boolean('logo-distro-icon-symbolic') ? 'symbolic' : 'color';
-            let bundledPath = GLib.build_filenamev([this._extensionPath, 'icons', `distro-${distroIcon}-${variant}.svg`]);
-            let file = Gio.File.new_for_path(bundledPath);
-            if (!file.query_exists(null)) {
-                // Fall back to the other variant if this distro doesn't
-                // ship the requested one (e.g. GNOME has color only).
-                let otherVariant = variant === 'symbolic' ? 'color' : 'symbolic';
-                bundledPath = GLib.build_filenamev([this._extensionPath, 'icons', `distro-${distroIcon}-${otherVariant}.svg`]);
-                file = Gio.File.new_for_path(bundledPath);
-            }
-            if (file.query_exists(null)) {
-                this._icon.gicon = Gio.icon_new_for_string(bundledPath);
-                return;
-            }
-        }
-
-        let iconName = this._settings.get_string('logo-icon-name') || 'start-here-symbolic';
-        this._icon.icon_name = iconName;
+        if (path)
+            this._icon.gicon = Gio.icon_new_for_string(path);
+        else
+            this._icon.icon_name = this._settings.get_string('logo-icon-name') || 'start-here-symbolic';
     }
 
     _rebuildMenu() {
+        const on = key => this._settings.get_boolean(key);
+        const hideOverview = on('hide-overview-button');
+        const power = on('show-power-options');
+        const lock = on('show-lock-screen');
+        const logout = on('show-log-out');
+
         this.menu.removeAll();
 
-        const hideOverview = this._settings.get_boolean('hide-overview-button');
-        const showAppGrid = this._settings.get_boolean('show-app-grid');
-        const showSoftwareCenter = this._settings.get_boolean('show-software-center');
-        const showSystemMonitor = this._settings.get_boolean('show-system-monitor');
-        const showTerminal = this._settings.get_boolean('show-terminal');
-        const showExtensionsApp = this._settings.get_boolean('show-extensions-app');
-        const showForceQuit = this._settings.get_boolean('show-force-quit');
-        const showPowerOptions = this._settings.get_boolean('show-power-options');
-        const showLockScreen = this._settings.get_boolean('show-lock-screen');
-        const showLogOut = this._settings.get_boolean('show-log-out');
+        this._addItem('About This System', () => this._showAbout(), 'dialog-information-symbolic');
+        this._addSeparator();
+        this.menu.addMenuItem(new RecentItemsRow(this.menu, this._flyoutManager));
+        this._addSeparator();
 
-        this._addItem('About This System', () => this._aboutThisSystem(), 'dialog-information-symbolic');
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        this.menu.addMenuItem(new RecentItemsSubmenu(this.menu, this._menuManager));
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-
-        // Only offer an "Activities" menu entry when the real panel button
-        // is hidden, so overview access is never lost entirely.
         if (hideOverview)
             this._addItem('Activities', () => Main.overview.toggle(), 'view-grid-symbolic');
-
-        if (showAppGrid)
+        if (on('show-app-grid'))
             this._addItem('App Grid', () => this._showAppGrid(), 'view-app-grid-symbolic');
+        if (hideOverview || on('show-app-grid'))
+            this._addSeparator();
 
-        if (hideOverview || showAppGrid)
-            this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-
-        if (showSoftwareCenter)
-            this._addItem('Software Center', () => this._launchOrNotify('software-center-command', SOFTWARE_CENTER_FALLBACKS, 'Software Center'), 'software-store-symbolic');
-        if (showSystemMonitor)
-            this._addItem('System Monitor', () => this._launchOrNotify('system-monitor-command', SYSTEM_MONITOR_FALLBACKS, 'System Monitor'), 'utilities-system-monitor-symbolic');
-        if (showTerminal)
-            this._addItem('Terminal', () => this._launchOrNotify('terminal-command', TERMINAL_FALLBACKS, 'Terminal'), 'utilities-terminal-symbolic');
-        if (showExtensionsApp)
+        for (const tool of TOOLS) {
+            if (on(tool.flag))
+                this._addItem(tool.label, () => this._launchTool(tool), tool.icon);
+        }
+        if (on('show-extensions-app'))
             this._addItem('Extensions', () => this._openExtensionsApp(), 'application-x-addon-symbolic');
 
-        if (showForceQuit) {
-            this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        if (on('show-force-quit')) {
+            this._addSeparator();
             this._addItem('Force Quit App', () => this._forceQuit(), 'process-stop-symbolic');
         }
 
-        let customItems = this._loadCustomItems();
-        if (customItems.length > 0) {
-            this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-            customItems.forEach(item => {
-                this._addItem(item.label || '(untitled)', () => spawnCommandLine(item.value), 'system-run-symbolic');
-            });
+        const custom = this._customItems();
+        if (custom.length > 0) {
+            this._addSeparator();
+            for (const entry of custom)
+                this._addItem(entry.label || '(untitled)', () => spawnLine(entry.value), 'system-run-symbolic');
         }
 
-        if (showPowerOptions || showLockScreen || showLogOut)
-            this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-
-        if (showPowerOptions) {
+        if (power || lock || logout)
+            this._addSeparator();
+        if (power) {
             this._addItem('Sleep', () => this._systemActions.activateSuspend(), 'weather-clear-night-symbolic');
             this._addItem('Restart...', () => this._systemActions.activateRestart(), 'system-reboot-symbolic');
             this._addItem('Shut Down...', () => this._systemActions.activatePowerOff(), 'system-shutdown-symbolic');
         }
-
-        if (showPowerOptions && (showLockScreen || showLogOut))
-            this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-
-        if (showLockScreen)
+        if (power && (lock || logout))
+            this._addSeparator();
+        if (lock)
             this._addItem('Lock Screen', () => this._systemActions.activateLockScreen(), 'system-lock-screen-symbolic');
-
-        if (showLogOut)
+        if (logout)
             this._addItem('Log Out...', () => this._systemActions.activateLogout(), 'system-log-out-symbolic');
     }
 
-    _addItem(label, activateFunction, iconName = null) {
-        let item = iconName
-            ? new PopupMenu.PopupImageMenuItem(label, iconName)
-            : new PopupMenu.PopupMenuItem(label);
-        item.connect('activate', activateFunction);
+    _addItem(label, onActivate, icon) {
+        const item = new PopupMenu.PopupImageMenuItem(label, icon);
+        item.connect('activate', onActivate);
         this.menu.addMenuItem(item);
-        return item;
     }
 
-    _loadCustomItems() {
+    _addSeparator() {
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+    }
+
+    _customItems() {
         try {
-            let items = JSON.parse(this._settings.get_string('system-menu-custom-items') || '[]');
-            return Array.isArray(items) ? items.filter(item => item && item.value) : [];
-        } catch (e) {
+            const items = JSON.parse(this._settings.get_string('system-menu-custom-items') || '[]');
+            return Array.isArray(items) ? items.filter(item => item?.value) : [];
+        } catch (_e) {
             return [];
         }
     }
 
-    _launchOrNotify(settingKey, fallbacks, label) {
-        let configured = this._settings.get_string(settingKey);
-        let resolved = findAvailableCommand(configured, fallbacks);
-        if (resolved) {
-            spawnCommandLine(resolved);
-        } else {
+    _launchTool({label, commandKey, presets}) {
+        const command = firstInstalled([this._settings.get_string(commandKey), ...presets]);
+        if (command)
+            spawnLine(command);
+        else
             Main.notify('System Menu', `No ${label} application found. Set one in Preferences.`);
-        }
     }
 
-    _aboutThisSystem() {
-        // systemInfoPanel.js is a standalone GTK4/Adw script, spawned below
-        // as its own `gjs -m` process — it is intentionally NOT imported
-        // here (a static import would load Gtk4/Adw into GNOME Shell's own
-        // GJS context, which uses St/Clutter and cannot safely host a
-        // second toolkit; Shexli's EGO-I-002/EGO-L-001 checks confirm this
-        // is treated as a real import edge even when dead-code-guarded, so
-        // the file is shipped unimported and launched only via subprocess).
-        let script = GLib.build_filenamev([this._extensionPath, 'systemInfoPanel.js']);
+    // Runs in its own process: loading GTK4 into the Shell would clash with St/Clutter.
+    _showAbout() {
+        const script = GLib.build_filenamev([this._extensionPath, 'systemInfoPanel.js']);
         try {
-            let [, argv] = GLib.shell_parse_argv(`gjs -m ${GLib.shell_quote(script)}`);
-            GLib.spawn_async(null, argv, null, GLib.SpawnFlags.SEARCH_PATH, null);
+            GLib.spawn_async(null, ['gjs', '-m', script], null, GLib.SpawnFlags.SEARCH_PATH, null);
         } catch (e) {
-            logError(`[globalmenu] Failed to launch System Info window: ${e}`);
-            spawnCommandLine('gnome-control-center system about');
+            debug(`could not open the system info window: ${e}`);
+            spawnLine('gnome-control-center system about');
         }
     }
 
@@ -245,41 +201,30 @@ export const SystemMenuButton = GObject.registerClass(
     }
 
     _openExtensionsApp() {
-        let appSys = Shell.AppSystem.get_default();
-        let preferredId = this._settings.get_string('extensions-app-id') || 'org.gnome.Extensions.desktop';
-        let app = appSys.lookup_app(preferredId) ||
-                  appSys.lookup_app('org.gnome.Extensions.desktop') ||
-                  appSys.lookup_app('com.mattjakeman.ExtensionManager.desktop');
-        if (app) {
-            try {
-                app.activate();
-            } catch (e) {
-                spawnCommandLine('gnome-extensions-app');
-            }
-        } else {
-            spawnCommandLine('gnome-extensions-app');
+        const apps = Shell.AppSystem.get_default();
+        const preferred = this._settings.get_string('extensions-app-id') || EXTENSION_APP_IDS[0];
+        const app = [preferred, ...EXTENSION_APP_IDS].map(id => apps.lookup_app(id)).find(Boolean);
+
+        try {
+            if (!app)
+                throw new Error('not installed');
+            app.activate();
+        } catch (_e) {
+            spawnLine('gnome-extensions-app');
         }
     }
 
     _forceQuit() {
-        let window = global.display.get_focus_window();
+        const window = global.display.get_focus_window();
         if (!window) {
             Main.notify('Force Quit', 'No focused window to quit.');
             return;
         }
+
         try {
             window.kill();
         } catch (e) {
-            logError(`[globalmenu] Force Quit failed: ${e}`);
+            debug(`force quit failed: ${e}`);
         }
     }
-
-    _onDestroy() {
-        this._menuManager = null;
-        this._settings = null;
-        this._systemActions = null;
-        this._extensionPath = null;
-        this._icon = null;
-    }
-  }
-);
+});
