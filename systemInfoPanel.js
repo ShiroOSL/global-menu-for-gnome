@@ -240,12 +240,16 @@ function makeWindow(app) {
     return window;
 }
 
-const app = new Adw.Application({application_id: APP_ID});
-let mainWindow = null;
+function main() {
+    const app = new Adw.Application({application_id: APP_ID});
+    let mainWindow = null;
 
-app.connect('activate', () => {
-    mainWindow ??= makeWindow(app);
-    mainWindow.present();
-});
+    app.connect('activate', () => {
+        mainWindow ??= makeWindow(app);
+        mainWindow.present();
+    });
 
-app.run(null);
+    app.run(null);
+}
+
+main();
