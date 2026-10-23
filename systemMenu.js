@@ -186,9 +186,8 @@ class SystemMenuButton extends PanelMenu.Button {
 
     // Runs in its own process: loading GTK4 into the Shell would clash with St/Clutter.
     _showAbout() {
-        const script = GLib.build_filenamev([this._extensionPath, 'systemInfoPanel.js']);
         try {
-            GLib.spawn_async(null, ['gjs', '-m', script], null, GLib.SpawnFlags.SEARCH_PATH, null);
+            GLib.spawn_async(null, ['gjs', '-m', `${this._extensionPath}/systemInfoPanel.js`], null, GLib.SpawnFlags.SEARCH_PATH, null);
         } catch (e) {
             debug(`could not open the system info window: ${e}`);
             spawnLine('gnome-control-center system about');
