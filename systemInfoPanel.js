@@ -1,3 +1,4 @@
+#!/usr/bin/env -S gjs -m
 // Standalone window, started by systemMenu.js with `gjs -m systemInfoPanel.js`.
 import Adw from 'gi://Adw?version=1';
 import Gio from 'gi://Gio';
