@@ -16,7 +16,7 @@
 
 ---
 
-## A note from me
+## A note from me (Nov 2026)
 
 I'm in my school exams right now, so I won't be able to work on this project for the next week, or maybe two. I need that time to study and can't use my PC.
 
