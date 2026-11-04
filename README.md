@@ -24,7 +24,6 @@ I'll continue as soon as my exams are finished. Thanks for your patience! 💙
 
 ---
 
-
 ## What is this?
 
 Global Menu for GNOME brings a streamlined, macOS-inspired layout to your
