@@ -295,6 +295,11 @@ export class MenuManager {
     }
 
     updateMenuForWindow(window) {
+        // Opening a menu can change the focus window (e.g. on X11), which would
+        // rebuild the buttons and destroy the menu that is just opening.
+        if (this._buttons.some(button => button.menu?.isOpen))
+            return;
+
         const focus = focusedApp(window);
         const desktopName = this._settings.get_string('desktop-app-name') || 'Nautilus';
         const enabled = key => this._settings.get_boolean(key);
