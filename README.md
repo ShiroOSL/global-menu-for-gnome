@@ -16,20 +16,14 @@
 
 ---
 
-## A note from the Me
+## A note from me
 
-**I'm sorry this update came late.** GNOME 51 was already out before this
-extension supported it, and I should have shipped it sooner. Thank you for
-your patience.
+I'm in my school exams right now, so I won't be able to work on this project for the next week, or maybe two. I need that time to study and can't use my PC.
 
-**What changed in this update**
-
-- **Full GNOME 51 support.** The extension now supports GNOME 47 to 51. GNOME 45 and 46 are no longer supported.
-- **Removed the Clipboard and Emoji picker features.** I'm planning a separate extension for clipboard history and emoji that will do this better than what I built here. It will be compatible with Global Menu for GNOME, so the two will work well together.
-- The "About This System" window and the Recent Items menu were rebuilt, with new PC and laptop icons.
-- Fixed the **New Tab** menu item, which was sending the wrong shortcut.
+I'll continue as soon as my exams are finished. Thanks for your patience! 💙
 
 ---
+
 
 ## What is this?
 
@@ -90,6 +84,12 @@ bash uninstall.sh
 If Global Menu made your desktop a little nicer, consider buying me a
 coffee on [Ko-fi](https://ko-fi.com/shiro_osl) — it genuinely helps keep
 this going.
+
+## Contributing
+
+Bug reports and ideas are welcome. Please open an issue first for bigger changes.
+
+**No AI-generated code.** I write this project by hand, so pull requests made with AI tools (Claude, Copilot, ChatGPT, etc.) will be closed.
 
 ## License
 
