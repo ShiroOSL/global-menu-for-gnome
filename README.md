@@ -16,7 +16,6 @@
 
 ---
 
-
 ## What is this?
 
 Global Menu for GNOME brings a streamlined, macOS-inspired layout to your
@@ -82,7 +81,6 @@ this going.
 
 Bug reports and ideas are welcome. Please open an issue first for bigger changes.
 
-(I changed my mind) 
 Pull requests are welcome, including ones made with AI tools, as long as you’ve tested the change yourself.
 
 ## License
