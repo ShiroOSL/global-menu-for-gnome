@@ -49,6 +49,7 @@
       <description>When the Activities button is visible, place it on the far left (before the System Menu logo and app menus).</description>
     </key>
 
+    <key name="show-menu-icons" type="b"><default>true</default><summary>Show icons next to menu items</summary></key>
     <key name="show-app-grid" type="b"><default>true</default><summary>Show App Grid item in System Menu</summary></key>
     <key name="show-software-center" type="b"><default>true</default><summary>Show Software Center item</summary></key>
     <key name="software-center-command" type="s"><default>"gnome-software"</default><summary>Command for Software Center</summary></key>

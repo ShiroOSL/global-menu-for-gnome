@@ -9,3 +9,7 @@
     min-width: 220px;
     max-width: 280px;
 }
+
+.globalmenu-menu {
+    max-width: 360px;
+}

@@ -20,7 +20,7 @@ const ICON_KEYS = [
 const MENU_KEYS = [
     'hide-overview-button', 'show-app-grid', 'show-software-center', 'show-system-monitor',
     'show-terminal', 'show-extensions-app', 'show-force-quit', 'show-power-options',
-    'show-lock-screen', 'show-log-out', 'system-menu-custom-items',
+    'show-lock-screen', 'show-log-out', 'system-menu-custom-items', 'show-menu-icons',
 ];
 
 const TOOLS = [
@@ -67,6 +67,7 @@ class SystemMenuButton extends PanelMenu.Button {
         this._syncIcon();
         this._rebuildMenu();
 
+        this._systemActions.connectObject('notify::can-logout', () => this._rebuildMenu(), this);
         this._settings.connectObject('changed', (_settings, key) => {
             if (ICON_KEYS.includes(key))
                 this._syncIcon();
@@ -107,13 +108,13 @@ class SystemMenuButton extends PanelMenu.Button {
         const hideOverview = on('hide-overview-button');
         const power = on('show-power-options');
         const lock = on('show-lock-screen');
-        const logout = on('show-log-out');
+        const logout = on('show-log-out') && this._systemActions.canLogout !== false;
 
         this.menu.removeAll();
 
         this._addItem('About This System', () => this._showAbout(), 'dialog-information-symbolic');
         this._addSeparator();
-        this.menu.addMenuItem(new RecentItemsRow(this.menu, this._flyoutManager));
+        this.menu.addMenuItem(new RecentItemsRow(this.menu, this._flyoutManager, on('show-menu-icons')));
         this._addSeparator();
 
         if (hideOverview)
@@ -158,7 +159,9 @@ class SystemMenuButton extends PanelMenu.Button {
     }
 
     _addItem(label, onActivate, icon) {
-        const item = new PopupMenu.PopupImageMenuItem(label, icon);
+        const item = this._settings.get_boolean('show-menu-icons')
+            ? new PopupMenu.PopupImageMenuItem(label, icon)
+            : new PopupMenu.PopupMenuItem(label);
         item.connect('activate', onActivate);
         this.menu.addMenuItem(item);
     }

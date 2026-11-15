@@ -3,6 +3,7 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Meta from 'gi://Meta';
+import Pango from 'gi://Pango';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
@@ -39,7 +40,7 @@ const WINDOW_ACTIONS = {
 
 // evdev key codes
 const KEY = {
-    A: 30, C: 46, H: 35, P: 25, T: 20, V: 47, X: 45, Y: 21, Z: 44,
+    A: 30, C: 46, H: 35, N: 49, P: 25, T: 20, V: 47, X: 45, Z: 44,
     CTRL: 29, SHIFT: 42, ALT: 56,
     ENTER: 28, DELETE: 111, LEFT: 105, RIGHT: 106, F10: 68, F11: 87,
 };
@@ -49,7 +50,7 @@ const SHORTCUTS = {
     'paste': [KEY.CTRL, KEY.V],
     'cut': [KEY.CTRL, KEY.X],
     'undo': [KEY.CTRL, KEY.Z],
-    'redo': [KEY.CTRL, KEY.Y],
+    'redo': [KEY.CTRL, KEY.SHIFT, KEY.Z],
     'select-all': [KEY.CTRL, KEY.A],
     'new-tab': [KEY.CTRL, KEY.T],
     'print': [KEY.CTRL, KEY.P],
@@ -67,6 +68,20 @@ const MODIFIER_KEYVALS = [
     [Clutter.ModifierType.MOD1_MASK, Clutter.KEY_Alt_L],
     [Clutter.ModifierType.SUPER_MASK, Clutter.KEY_Super_L],
 ];
+
+export function addToPanel(role, button, position, box) {
+    try {
+        Main.panel.addToStatusArea(role, button, position, box);
+    } catch (e) {
+        if (Main.panel.statusArea[role] !== button) {
+            button.destroy();
+            throw e;
+        }
+        debug(`panel hook failed after adding ${role}: ${e}`);
+    }
+}
+
+const FILE_MANAGERS = ['nautilus', 'nemo', 'caja', 'thunar'];
 
 const IGNORED_APPS = [
     'gjs', 'org.gnome.gjs', 'gnome-shell', 'mutter',
@@ -108,9 +123,10 @@ function createDesktopFolder() {
 
 const TopLevelMenuButton = GObject.registerClass(
 class TopLevelMenuButton extends PanelMenu.Button {
-    _init(label, children, app = null) {
+    _init(label, children, app = null, showIcons = true) {
         super._init(0.5, label);
         this._app = app;
+        this._showIcons = showIcons;
         this._keyboard = null;
         this._timeouts = new Set();
 
@@ -120,6 +136,7 @@ class TopLevelMenuButton extends PanelMenu.Button {
             style_class: 'panel-button-label',
         }));
 
+        this.menu.box.add_style_class_name('globalmenu-menu');
         this._fill(children, this.menu);
         this.menu.connectObject('open-state-changed', () => this._centerMenu(), this);
     }
@@ -156,8 +173,9 @@ class TopLevelMenuButton extends PanelMenu.Button {
                 heading.label.add_style_class_name('popup-subtitle-menu-item');
                 menu.addMenuItem(heading);
             } else if (item.type === 'submenu') {
-                const sub = new PopupMenu.PopupSubMenuMenuItem(item.label, !!item.icon);
-                if (item.icon)
+                const withIcon = this._showIcons && !!item.icon;
+                const sub = new PopupMenu.PopupSubMenuMenuItem(item.label, withIcon);
+                if (withIcon)
                     sub.icon.icon_name = item.icon;
                 this._fill(item.children, sub.menu);
                 menu.addMenuItem(sub);
@@ -168,9 +186,10 @@ class TopLevelMenuButton extends PanelMenu.Button {
     }
 
     _actionItem({label, icon, action, enabled}) {
-        const entry = icon
+        const entry = icon && this._showIcons
             ? new PopupMenu.PopupImageMenuItem(label, icon)
             : new PopupMenu.PopupMenuItem(label);
+        entry.label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
 
         if (enabled === false)
             entry.setSensitive(false);
@@ -202,7 +221,7 @@ class TopLevelMenuButton extends PanelMenu.Button {
                 spawn(['gnome-software', `--details=${arg}`]);
             return;
         case 'new-folder':
-            createDesktopFolder();
+            this._newFolder();
             return;
         case 'native-open-with':
             this._openWith();
@@ -227,9 +246,23 @@ class TopLevelMenuButton extends PanelMenu.Button {
     }
 
     _virtualKeyboard() {
-        this._keyboard ??= Clutter.get_default_backend().get_default_seat()
+        const backend = global.stage.context?.get_backend() ?? Clutter.get_default_backend();
+        this._keyboard ??= backend.get_default_seat()
             .create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
         return this._keyboard;
+    }
+
+    _newFolder() {
+        const window = global.display.get_focus_window();
+        const app = window && Shell.WindowTracker.get_default().get_window_app(window);
+        const id = [app?.get_id(), window?.get_wm_class()].join(' ').toLowerCase();
+        const inFileManager = window?.get_window_type() === Meta.WindowType.NORMAL &&
+            FILE_MANAGERS.some(name => id.includes(name));
+
+        if (inFileManager)
+            this._tap([KEY.CTRL, KEY.SHIFT, KEY.N]);
+        else
+            createDesktopFolder();
     }
 
     _tap(keys) {
@@ -292,12 +325,20 @@ export class MenuManager {
         this.uuid = uuid;
         this._settings = settings;
         this._buttons = [];
+        this._rebuildPending = false;
+        this._rebuildId = 0;
     }
 
     updateMenuForWindow(window) {
+        if (this._buttons.some(button => button.menu.isOpen)) {
+            this._rebuildWhenClosed();
+            return;
+        }
+
         const focus = focusedApp(window);
         const desktopName = this._settings.get_string('desktop-app-name') || 'Nautilus';
         const enabled = key => this._settings.get_boolean(key);
+        const showIcons = enabled('show-menu-icons');
 
         const menus = [];
         if (enabled('menu-app-enabled')) {
@@ -316,8 +357,8 @@ export class MenuManager {
 
         const firstSlot = (enabled('hide-overview-button') ? 0 : 1) + (enabled('show-logo-menu') ? 1 : 0);
         menus.forEach((menu, i) => {
-            const button = new TopLevelMenuButton(menu.label, menu.children, focus?.app ?? null);
-            Main.panel.addToStatusArea(`${this.uuid}-${i}`, button, firstSlot + i, 'left');
+            const button = new TopLevelMenuButton(menu.label, menu.children, focus?.app ?? null, showIcons);
+            addToPanel(`${this.uuid}-${i}`, button, firstSlot + i, 'left');
             this._buttons.push(button);
         });
     }
@@ -347,7 +388,30 @@ export class MenuManager {
             });
     }
 
+    _rebuildWhenClosed() {
+        if (this._rebuildPending)
+            return;
+        this._rebuildPending = true;
+
+        const {menu} = this._buttons.find(button => button.menu.isOpen);
+        const id = menu.connect('open-state-changed', (_menu, isOpen) => {
+            if (isOpen || !this._rebuildPending)
+                return;
+            menu.disconnect(id);
+            this._rebuildId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                this._rebuildId = 0;
+                this._rebuildPending = false;
+                this.updateMenuForWindow(global.display.get_focus_window());
+                return GLib.SOURCE_REMOVE;
+            });
+        });
+    }
+
     clear() {
+        if (this._rebuildId)
+            GLib.source_remove(this._rebuildId);
+        this._rebuildId = 0;
+        this._rebuildPending = false;
         this._buttons.forEach(button => button.destroy());
         this._buttons = [];
     }

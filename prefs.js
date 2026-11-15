@@ -1,4 +1,5 @@
 import Adw from 'gi://Adw';
+import Gdk from 'gi://Gdk';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
@@ -9,6 +10,7 @@ import {COMMAND_PRESETS} from './utils.js';
 
 const BIND = Gio.SettingsBindFlags.DEFAULT;
 const KOFI_URL = 'https://ko-fi.com/shiro_osl';
+const GITHUB_URL = 'https://github.com/ShiroOSL';
 
 const DISTRO_ICONS = [
     ['apple', 'Apple'], ['fedora', 'Fedora'], ['debian', 'Debian'], ['ubuntu', 'Ubuntu'],
@@ -312,26 +314,25 @@ function addSystemMenuCommands(page, settings) {
     rebuild();
 }
 
-function generalPage(settings, window, iconsDir) {
-    const page = new Adw.PreferencesPage({title: 'General', icon_name: 'preferences-system-symbolic'});
+function appearancePage(settings, window, iconsDir) {
+    const page = new Adw.PreferencesPage({title: 'Appearance', icon_name: 'applications-graphics-symbolic'});
 
-    const main = new Adw.PreferencesGroup({title: 'Global Menu'});
-    page.add(main);
-    addSwitch(main, settings, 'show-indicator', 'Show Global Menu', 'Master toggle for the whole menu bar');
-    const hideOverview = addSwitch(main, settings, 'hide-overview-button', 'Hide Activities Button',
+    const bar = new Adw.PreferencesGroup({title: 'Menu Bar'});
+    page.add(bar);
+    addSwitch(bar, settings, 'show-indicator', 'Show Global Menu', 'Master toggle for the whole menu bar');
+    const hideOverview = addSwitch(bar, settings, 'hide-overview-button', 'Hide Activities Button',
         'An "Activities" item is then added to the System Menu instead');
-    const keepLeft = addSwitch(main, settings, 'keep-activities-left', 'Keep Activities on Far Left',
+    const keepLeft = addSwitch(bar, settings, 'keep-activities-left', 'Keep Activities on Far Left',
         'Place the native Activities button before the System Menu logo and app menus');
+    addSwitch(bar, settings, 'show-menu-icons', 'Show Menu Icons',
+        'Icons next to items in the System Menu and app menus');
 
     const syncKeepLeft = () => keepLeft.set_sensitive(!hideOverview.active);
     hideOverview.connect('notify::active', syncKeepLeft);
     syncKeepLeft();
 
-    main.add(entryRow('File Manager / Desktop Name', settings.get_string('desktop-app-name'),
-        text => settings.set_string('desktop-app-name', text || 'Nautilus')));
-
     const logo = new Adw.PreferencesGroup({
-        title: 'System Menu',
+        title: 'System Menu Button',
         description: 'A button on the far left of the bar, similar to the Apple menu on macOS',
     });
     page.add(logo);
@@ -339,6 +340,10 @@ function generalPage(settings, window, iconsDir) {
         'If disabled, app menus start immediately next to Activities');
     addIconPicker(logo, settings, window, iconsDir);
 
+    return page;
+}
+
+function addSystemMenuItems(page, settings) {
     const items = new Adw.PreferencesGroup({title: 'System Menu Items'});
     page.add(items);
     addSwitch(items, settings, 'show-app-grid', 'App Grid');
@@ -365,15 +370,6 @@ function generalPage(settings, window, iconsDir) {
     addSwitch(power, settings, 'show-power-options', 'Sleep / Restart / Shut Down');
     addSwitch(power, settings, 'show-lock-screen', 'Lock Screen');
     addSwitch(power, settings, 'show-log-out', 'Log Out');
-
-    const advanced = new Adw.PreferencesGroup({
-        title: 'Advanced',
-        description: 'Off by default; turn on temporarily if you need to diagnose an issue',
-    });
-    page.add(advanced);
-    addSwitch(advanced, settings, 'debug-logging', 'Verbose Error Logging');
-
-    return page;
 }
 
 function menusPage(settings) {
@@ -387,11 +383,34 @@ function menusPage(settings) {
     for (const [key, title] of BUILTIN_MENUS)
         addSwitch(group, settings, key, title);
 
+    addSystemMenuItems(page, settings);
+    addCustomMenus(page, settings);
+
     return page;
 }
 
-function customMenusPage(settings) {
-    const page = new Adw.PreferencesPage({title: 'Custom Menus', icon_name: 'list-add-symbolic'});
+function advancedPage(settings) {
+    const page = new Adw.PreferencesPage({title: 'Advanced', icon_name: 'preferences-other-symbolic'});
+
+    const files = new Adw.PreferencesGroup({
+        title: 'File Manager',
+        description: 'The name shown as the app menu when no window is focused',
+    });
+    page.add(files);
+    files.add(entryRow('File Manager / Desktop Name', settings.get_string('desktop-app-name'),
+        text => settings.set_string('desktop-app-name', text || 'Nautilus')));
+
+    const diagnostics = new Adw.PreferencesGroup({
+        title: 'Diagnostics',
+        description: 'Off by default; turn on temporarily if you need to diagnose an issue',
+    });
+    page.add(diagnostics);
+    addSwitch(diagnostics, settings, 'debug-logging', 'Verbose Error Logging');
+
+    return page;
+}
+
+function addCustomMenus(page, settings) {
     const group = new Adw.PreferencesGroup({
         title: 'Custom Menus',
         description: 'Add any number of custom top-level menus, each running shell commands ' +
@@ -503,8 +522,6 @@ function customMenusPage(settings) {
         rebuild();
     });
     rebuild();
-
-    return page;
 }
 
 function linkRow(group, title, uri) {
@@ -514,29 +531,99 @@ function linkRow(group, title, uri) {
     return row;
 }
 
-function aboutPage(metadata) {
-    const page = new Adw.PreferencesPage({title: 'About', icon_name: 'help-about-symbolic'});
+const imageFile = (dir, name) => GLib.build_filenamev([dir, 'images', name]);
 
-    const group = new Adw.PreferencesGroup();
-    page.add(group);
-    group.add(new Adw.ActionRow({title: metadata.name || 'Global Menu for GNOME'}));
-    group.add(new Adw.ActionRow({title: 'Version', subtitle: String(metadata.version ?? '')}));
-
-    const description = new Adw.ActionRow({title: 'Description', subtitle: metadata.description || ''});
-    description.set_subtitle_lines(0);
-    group.add(description);
-
-    if (metadata.url) {
-        linkRow(group, 'Homepage', metadata.url);
-        linkRow(group, 'Report a Bug', `${metadata.url.replace(/\/$/, '')}/issues`);
+function loadTexture(file) {
+    try {
+        return Gdk.Texture.new_from_filename(file);
+    } catch (e) {
+        return null;
     }
+}
 
-    const support = linkRow(group, 'Support the Development', KOFI_URL);
-    support.add_prefix(new Gtk.Image({icon_name: 'emblem-favorite-symbolic'}));
+function linkButton(label, uri, css = []) {
+    const button = new Gtk.Button({label, css_classes: css});
+    button.connect('clicked', () => openUri(uri));
+    return button;
+}
+
+function profileColumn(metadata, dir) {
+    const column = new Gtk.Box({orientation: Gtk.Orientation.VERTICAL, spacing: 12, hexpand: true, valign: Gtk.Align.CENTER});
+
+    const heading = new Gtk.Box({spacing: 14});
+    heading.append(new Adw.Avatar({size: 72, text: 'ShiroOSL', custom_image: loadTexture(imageFile(dir, 'avatar.png'))}));
+
+    const names = new Gtk.Box({orientation: Gtk.Orientation.VERTICAL, valign: Gtk.Align.CENTER});
+    names.append(new Gtk.Label({label: 'ShiroOSL', css_classes: ['title-2'], halign: Gtk.Align.START}));
+    names.append(new Gtk.Label({
+        label: 'Developer of Global Menu for GNOME',
+        css_classes: ['dim-label'],
+        halign: Gtk.Align.START,
+    }));
+    heading.append(names);
+    column.append(heading);
+
+    column.append(new Gtk.Label({
+        label: 'Thank you for using Global Menu for GNOME! If it makes your desktop better, ' +
+            'you can support its development on Ko-fi.',
+        wrap: true,
+        xalign: 0,
+    }));
+
+    const buttons = new Gtk.Box({spacing: 8});
+    buttons.append(linkButton('Support on Ko-fi', KOFI_URL, ['suggested-action', 'pill']));
+    buttons.append(linkButton('GitHub', GITHUB_URL, ['pill']));
+    column.append(buttons);
+
+    return column;
+}
+
+function qrColumn(dir) {
+    const file = imageFile(dir, 'kofi-qr.png');
+    if (!GLib.file_test(file, GLib.FileTest.EXISTS))
+        return null;
+
+    const column = new Gtk.Box({orientation: Gtk.Orientation.VERTICAL, spacing: 8, valign: Gtk.Align.CENTER});
+    const picture = Gtk.Picture.new_for_filename(file);
+    picture.set_size_request(150, 150);
+    picture.add_css_class('card');
+    column.append(picture);
+    column.append(new Gtk.Label({label: 'Scan to support', css_classes: ['dim-label', 'caption']}));
+    return column;
+}
+
+function homePage(metadata, dir) {
+    const page = new Adw.PreferencesPage({title: 'Home', icon_name: 'go-home-symbolic'});
+
+    const card = new Gtk.Box({css_classes: ['card']});
+    const content = new Gtk.Box({
+        spacing: 28,
+        hexpand: true,
+        margin_top: 24,
+        margin_bottom: 24,
+        margin_start: 24,
+        margin_end: 24,
+    });
+    content.append(profileColumn(metadata, dir));
+    const qr = qrColumn(dir);
+    if (qr)
+        content.append(qr);
+    card.append(content);
+
+    const hero = new Adw.PreferencesGroup();
+    hero.add(card);
+    page.add(hero);
+
+    const about = new Adw.PreferencesGroup({title: metadata.name || 'Global Menu for GNOME'});
+    page.add(about);
+    about.add(new Adw.ActionRow({title: 'Version', subtitle: String(metadata.version ?? '')}));
+    if (metadata.url) {
+        linkRow(about, 'Homepage', metadata.url);
+        linkRow(about, 'Report a Bug', `${metadata.url.replace(/\/$/, '')}/issues`);
+    }
 
     const notes = new Adw.PreferencesGroup({title: 'Notes'});
     page.add(notes);
-
     const icons = new Adw.ActionRow({
         title: 'Distro icons',
         subtitle: 'Bundled distro logos are trademarks of their respective owners, included ' +
@@ -552,10 +639,10 @@ export default class GlobalMenuPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
 
-        window.add(generalPage(settings, window, GLib.build_filenamev([this.path, 'icons'])));
+        window.add(homePage(this.metadata, this.path));
+        window.add(appearancePage(settings, window, GLib.build_filenamev([this.path, 'icons'])));
         window.add(menusPage(settings));
-        window.add(customMenusPage(settings));
-        window.add(aboutPage(this.metadata));
-        window.set_default_size(680, 780);
+        window.add(advancedPage(settings));
+        window.set_default_size(720, 780);
     }
 }

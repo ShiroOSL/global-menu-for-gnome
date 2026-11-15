@@ -10,7 +10,7 @@ mkdir -p "$TARGET"
 
 cp "$SOURCE"/*.js "$SOURCE/metadata.json" "$SOURCE/stylesheet.css" "$TARGET/"
 cp "$SOURCE/uninstall.sh" "$SOURCE/logs.sh" "$TARGET/"
-cp -r "$SOURCE/schemas" "$SOURCE/icons" "$TARGET/"
+cp -r "$SOURCE/schemas" "$SOURCE/icons" "$SOURCE/images" "$TARGET/"
 
 glib-compile-schemas "$TARGET/schemas/"
 

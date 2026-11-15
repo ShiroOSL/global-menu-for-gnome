@@ -168,7 +168,7 @@ class RecentFlyout extends PopupMenu.PopupMenu {
 
 export const RecentItemsRow = GObject.registerClass(
 class RecentItemsRow extends PopupMenu.PopupBaseMenuItem {
-    _init(parentMenu, menuManager) {
+    _init(parentMenu, menuManager, showIcon = true) {
         // activate: false, so a click doesn't close the System Menu
         super._init({activate: false, can_focus: true, hover: true});
 
@@ -177,10 +177,12 @@ class RecentItemsRow extends PopupMenu.PopupBaseMenuItem {
         this._flyout = null;
         this._loading = null;
 
-        this.add_child(new St.Icon({
-            icon_name: 'document-open-recent-symbolic',
-            style_class: 'popup-menu-icon',
-        }));
+        if (showIcon) {
+            this.add_child(new St.Icon({
+                icon_name: 'document-open-recent-symbolic',
+                style_class: 'popup-menu-icon',
+            }));
+        }
         this.add_child(new St.Label({
             text: 'Recent Items',
             x_expand: true,

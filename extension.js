@@ -1,7 +1,7 @@
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-import {MenuManager} from './menuManager.js';
+import {MenuManager, addToPanel} from './menuManager.js';
 import {SystemMenuButton} from './systemMenu.js';
 import {setDebug} from './utils.js';
 
@@ -84,7 +84,7 @@ export default class GlobalMenuExtension extends Extension {
 
         if (wanted && !this._logoButton) {
             this._logoButton = new SystemMenuButton(this._settings, this.path);
-            Main.panel.addToStatusArea('globalmenu-logo', this._logoButton, this._logoIndex(), 'left');
+            addToPanel('globalmenu-logo', this._logoButton, this._logoIndex(), 'left');
         } else if (!wanted && this._logoButton) {
             this._logoButton.destroy();
             this._logoButton = null;
