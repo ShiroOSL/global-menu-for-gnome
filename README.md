@@ -16,13 +16,6 @@
 
 ---
 
-## A note from me (Nov 2026)
-
-I'm in my school exams right now, so I won't be able to work on this project for the next week, or maybe two. I need that time to study and can't use my PC.
-
-I'll continue as soon as my exams are finished. Thanks for your patience! 💙
-
----
 
 ## What is this?
 
@@ -39,6 +32,7 @@ across app headerbars.
 - Multiple independent custom top-level menus, each with shell-command or keyboard-shortcut items
 - Bundled distro/Apple icon picker for the System Menu button
 - Optional hiding of the Activities button
+- Option to hide the icons next to menu items
 - Works on GNOME 47 to 51
 
 ## 🚀 Installation
