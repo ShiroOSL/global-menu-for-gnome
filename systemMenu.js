@@ -18,7 +18,7 @@ const ICON_KEYS = [
 ];
 
 const MENU_KEYS = [
-    'hide-overview-button', 'show-app-grid', 'show-software-center', 'show-system-monitor',
+    'hide-overview-button', 'show-activities-item', 'show-app-grid', 'show-software-center', 'show-system-monitor',
     'show-terminal', 'show-extensions-app', 'show-force-quit', 'show-power-options',
     'show-lock-screen', 'show-log-out', 'system-menu-custom-items', 'show-menu-icons',
 ];
@@ -105,7 +105,7 @@ class SystemMenuButton extends PanelMenu.Button {
 
     _rebuildMenu() {
         const on = key => this._settings.get_boolean(key);
-        const hideOverview = on('hide-overview-button');
+        const activities = on('hide-overview-button') && on('show-activities-item');
         const power = on('show-power-options');
         const lock = on('show-lock-screen');
         const logout = on('show-log-out') && this._systemActions.canLogout !== false;
@@ -117,11 +117,11 @@ class SystemMenuButton extends PanelMenu.Button {
         this.menu.addMenuItem(new RecentItemsRow(this.menu, this._flyoutManager, on('show-menu-icons')));
         this._addSeparator();
 
-        if (hideOverview)
+        if (activities)
             this._addItem('Activities', () => Main.overview.toggle(), 'view-grid-symbolic');
         if (on('show-app-grid'))
             this._addItem('App Grid', () => this._showAppGrid(), 'view-app-grid-symbolic');
-        if (hideOverview || on('show-app-grid'))
+        if (activities || on('show-app-grid'))
             this._addSeparator();
 
         for (const tool of TOOLS) {

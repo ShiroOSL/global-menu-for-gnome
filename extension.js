@@ -2,6 +2,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {MenuManager, addToPanel} from './menuManager.js';
+import {QuickSettingsTrimmer, QUICK_SETTINGS_KEYS} from './quickSettings.js';
 import {SystemMenuButton} from './systemMenu.js';
 import {setDebug} from './utils.js';
 
@@ -18,6 +19,7 @@ export default class GlobalMenuExtension extends Extension {
     enable() {
         this._settings = this.getSettings();
         this._menuManager = new MenuManager(this.metadata.uuid, this._settings);
+        this._trimmer = new QuickSettingsTrimmer(this._settings);
         this._logoButton = null;
         this._overviewHidden = false;
 
@@ -29,6 +31,7 @@ export default class GlobalMenuExtension extends Extension {
         this._syncOverviewButton();
         this._syncLogoButton();
         this._syncMenus();
+        this._trimmer.sync();
     }
 
     disable() {
@@ -37,6 +40,9 @@ export default class GlobalMenuExtension extends Extension {
 
         this._menuManager.destroy();
         this._menuManager = null;
+
+        this._trimmer.destroy();
+        this._trimmer = null;
 
         this._logoButton?.destroy();
         this._logoButton = null;
@@ -63,6 +69,8 @@ export default class GlobalMenuExtension extends Extension {
         } else if (key === 'show-logo-menu') {
             this._syncLogoButton();
             this._syncMenus();
+        } else if (QUICK_SETTINGS_KEYS.includes(key)) {
+            this._trimmer.sync();
         } else if (!LOGO_KEYS.includes(key)) {
             this._syncMenus();
         }

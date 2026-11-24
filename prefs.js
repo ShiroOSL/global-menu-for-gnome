@@ -346,6 +346,8 @@ function appearancePage(settings, window, iconsDir) {
 function addSystemMenuItems(page, settings) {
     const items = new Adw.PreferencesGroup({title: 'System Menu Items'});
     page.add(items);
+    addSwitch(items, settings, 'show-activities-item', 'Activities',
+        'Only shown while the Activities button is hidden');
     addSwitch(items, settings, 'show-app-grid', 'App Grid');
     addCommandRow(items, settings, 'Software Center', 'show-software-center', 'software-center-command', COMMAND_PRESETS.softwareCenter);
     addCommandRow(items, settings, 'System Monitor', 'show-system-monitor', 'system-monitor-command', COMMAND_PRESETS.systemMonitor);
@@ -389,6 +391,16 @@ function menusPage(settings) {
     return page;
 }
 
+const QUICK_SETTINGS_SWITCHES = [
+    ['hide-qs-screenshot', 'Hide Screenshot Button'],
+    ['hide-qs-settings', 'Hide Settings Button'],
+    ['hide-qs-lock', 'Hide Lock Button'],
+    ['hide-qs-power-menu', 'Hide Power Menu Button'],
+    ['hide-qs-battery', 'Hide Battery in Quick Settings'],
+    ['hide-qs-power-icon', 'Hide Power Icon in Top Bar'],
+    ['hide-qs-background-apps', 'Hide Background Apps'],
+];
+
 function advancedPage(settings) {
     const page = new Adw.PreferencesPage({title: 'Advanced', icon_name: 'preferences-other-symbolic'});
 
@@ -399,6 +411,14 @@ function advancedPage(settings) {
     page.add(files);
     files.add(entryRow('File Manager / Desktop Name', settings.get_string('desktop-app-name'),
         text => settings.set_string('desktop-app-name', text || 'Nautilus')));
+
+    const quickSettings = new Adw.PreferencesGroup({
+        title: 'Quick Settings',
+        description: 'Hide parts of the system Quick Settings panel without leaving a gap. Nothing is hidden by default.',
+    });
+    page.add(quickSettings);
+    for (const [key, title] of QUICK_SETTINGS_SWITCHES)
+        addSwitch(quickSettings, settings, key, title);
 
     const diagnostics = new Adw.PreferencesGroup({
         title: 'Diagnostics',

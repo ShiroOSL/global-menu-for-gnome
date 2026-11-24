@@ -43,6 +43,7 @@
     </key>
 
     <key name="hide-overview-button" type="b"><default>false</default><summary>Hide the Activities/overview button</summary></key>
+    <key name="show-activities-item" type="b"><default>true</default><summary>Show Activities in the System Menu when the Activities button is hidden</summary></key>
     <key name="keep-activities-left" type="b">
       <default>true</default>
       <summary>Keep the Activities button on the far left</summary>
@@ -84,6 +85,41 @@
       <default>false</default>
       <summary>Enable verbose error logging to the system journal</summary>
       <description>Off by default to avoid excessive logging; turn on temporarily when diagnosing an issue.</description>
+    </key>
+
+    <key name="hide-qs-screenshot" type="b">
+      <default>false</default>
+      <summary>Hide the Screenshot button in Quick Settings</summary>
+    </key>
+
+    <key name="hide-qs-settings" type="b">
+      <default>false</default>
+      <summary>Hide the Settings button in Quick Settings</summary>
+    </key>
+
+    <key name="hide-qs-lock" type="b">
+      <default>false</default>
+      <summary>Hide the Lock button in Quick Settings</summary>
+    </key>
+
+    <key name="hide-qs-power-menu" type="b">
+      <default>false</default>
+      <summary>Hide the Power Menu button in Quick Settings</summary>
+    </key>
+
+    <key name="hide-qs-battery" type="b">
+      <default>false</default>
+      <summary>Hide the battery item in Quick Settings</summary>
+    </key>
+
+    <key name="hide-qs-power-icon" type="b">
+      <default>false</default>
+      <summary>Hide the power icon in the top bar</summary>
+    </key>
+
+    <key name="hide-qs-background-apps" type="b">
+      <default>false</default>
+      <summary>Hide the Background Apps item in Quick Settings</summary>
     </key>
   </schema>
 </schemalist>

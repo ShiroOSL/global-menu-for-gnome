@@ -6,12 +6,14 @@ import Pango from 'gi://Pango';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
+import {PACKAGE_VERSION} from 'resource:///org/gnome/shell/misc/config.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {debug} from './utils.js';
 
 const MAX_APPS = 6;
+const CLOSE_NOW = Number.parseInt(PACKAGE_VERSION) >= 51 ? {animate: false} : false;
 const MAX_DOCUMENTS = 8;
 const BOOKMARKS_PATH = GLib.build_filenamev([GLib.get_user_data_dir(), 'recently-used.xbel']);
 const OPEN_KEYS = [Clutter.KEY_Right, Clutter.KEY_Return, Clutter.KEY_KP_Enter, Clutter.KEY_space];
@@ -206,7 +208,7 @@ class RecentItemsRow extends PopupMenu.PopupBaseMenuItem {
 
         parentMenu.connectObject('open-state-changed', (_menu, isOpen) => {
             if (!isOpen)
-                this._flyout?.close(false);
+                this._flyout?.close(CLOSE_NOW);
         }, this);
     }
 

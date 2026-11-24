@@ -62,12 +62,26 @@ const SHORTCUTS = {
     'properties': [KEY.ALT, KEY.ENTER],
 };
 
-const MODIFIER_KEYVALS = [
-    [Clutter.ModifierType.CONTROL_MASK, Clutter.KEY_Control_L],
-    [Clutter.ModifierType.SHIFT_MASK, Clutter.KEY_Shift_L],
-    [Clutter.ModifierType.MOD1_MASK, Clutter.KEY_Alt_L],
-    [Clutter.ModifierType.SUPER_MASK, Clutter.KEY_Super_L],
-];
+const MODIFIER_KEYVALS = {
+    control: Clutter.KEY_Control_L,
+    ctrl: Clutter.KEY_Control_L,
+    primary: Clutter.KEY_Control_L,
+    shift: Clutter.KEY_Shift_L,
+    alt: Clutter.KEY_Alt_L,
+    mod1: Clutter.KEY_Alt_L,
+    super: Clutter.KEY_Super_L,
+    mod4: Clutter.KEY_Super_L,
+};
+
+function parseAccelerator(accelerator) {
+    const match = /^((?:<\w+>)*)(\w+)$/.exec(accelerator.trim());
+    if (!match)
+        return null;
+
+    const held = [...match[1].matchAll(/<(\w+)>/g)].map(([, name]) => MODIFIER_KEYVALS[name.toLowerCase()]);
+    const keyval = Clutter[`KEY_${match[2]}`];
+    return held.includes(undefined) || keyval === undefined ? null : {held, keyval};
+}
 
 export function addToPanel(role, button, position, box) {
     try {
@@ -104,6 +118,14 @@ function focusedApp(window) {
     if (app)
         return {app, name: app.get_name(), desktopId: app.get_id()};
     return {app: null, name: titleCase(wmClass), desktopId: `${wmClass.toLowerCase()}.desktop`};
+}
+
+function inNautilus(window) {
+    if (!window || window.get_window_type() !== Meta.WindowType.NORMAL)
+        return false;
+
+    const app = Shell.WindowTracker.get_default().get_window_app(window);
+    return `${app?.get_id() ?? ''} ${window.get_wm_class() ?? ''}`.toLowerCase().includes('nautilus');
 }
 
 function createDesktopFolder() {
@@ -246,7 +268,7 @@ class TopLevelMenuButton extends PanelMenu.Button {
     }
 
     _virtualKeyboard() {
-        const backend = global.stage.context?.get_backend() ?? Clutter.get_default_backend();
+        const backend = global.stage.context?.get_backend?.() ?? Clutter.get_default_backend();
         this._keyboard ??= backend.get_default_seat()
             .create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
         return this._keyboard;
@@ -279,19 +301,19 @@ class TopLevelMenuButton extends PanelMenu.Button {
     }
 
     _sendAccelerator(accelerator) {
-        const [ok, keyval, mods] = Clutter.accelerator_parse(accelerator);
-        if (!ok) {
+        const parsed = parseAccelerator(accelerator);
+        if (!parsed) {
             debug(`could not parse shortcut '${accelerator}'`);
             return;
         }
 
-        const held = MODIFIER_KEYVALS.filter(([mask]) => mods & mask).map(([, key]) => key);
+        const {held, keyval} = parsed;
         try {
             const keyboard = this._virtualKeyboard();
             let time = GLib.get_monotonic_time();
             for (const key of [...held, keyval])
                 keyboard.notify_keyval(time += 5, key, Clutter.KeyState.PRESSED);
-            for (const key of [keyval, ...held.reverse()])
+            for (const key of [keyval, ...[...held].reverse()])
                 keyboard.notify_keyval(time += 5, key, Clutter.KeyState.RELEASED);
         } catch (e) {
             debug(`could not send shortcut '${accelerator}': ${e}`);
@@ -336,6 +358,7 @@ export class MenuManager {
         }
 
         const focus = focusedApp(window);
+        const inFiles = inNautilus(window);
         const desktopName = this._settings.get_string('desktop-app-name') || 'Nautilus';
         const enabled = key => this._settings.get_boolean(key);
         const showIcons = enabled('show-menu-icons');
@@ -344,10 +367,10 @@ export class MenuManager {
         if (enabled('menu-app-enabled')) {
             menus.push({
                 label: focus?.name ?? desktopName,
-                children: appMenuItems(focus, desktopName),
+                children: appMenuItems(focus, desktopName, inFiles),
             });
         }
-        for (const [key, menu] of builtinMenus(desktopName)) {
+        for (const [key, menu] of builtinMenus(desktopName, inFiles)) {
             if (enabled(key))
                 menus.push(menu);
         }
